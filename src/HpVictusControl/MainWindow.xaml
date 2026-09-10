@@ -1,0 +1,93 @@
+<Window x:Class="HpVictusControl.MainWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="HP Victus Control" Height="480" Width="420"
+        MinHeight="480" MinWidth="420"
+        WindowStartupLocation="CenterScreen">
+    <Grid Margin="14">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+        </Grid.RowDefinitions>
+
+        <!-- Support / status banner -->
+        <Border x:Name="StatusBanner" Grid.Row="0" Background="#FFF3CD" BorderBrush="#FFE69C" BorderThickness="1"
+                CornerRadius="4" Padding="8" Margin="0,0,0,10" Visibility="Collapsed">
+            <TextBlock x:Name="StatusBannerText" TextWrapping="Wrap" Foreground="#664D03"/>
+        </Border>
+
+        <!-- Live stats -->
+        <GroupBox Grid.Row="1" Header="Live stats" Margin="0,0,0,10">
+            <Grid Margin="6">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="*"/>
+                </Grid.ColumnDefinitions>
+                <StackPanel Grid.Column="0">
+                    <TextBlock Text="Temperature" Foreground="Gray" FontSize="11"/>
+                    <TextBlock x:Name="TemperatureText" Text="--°C" FontSize="20" FontWeight="Bold"/>
+                </StackPanel>
+                <StackPanel Grid.Column="1">
+                    <TextBlock Text="CPU fan" Foreground="Gray" FontSize="11"/>
+                    <TextBlock x:Name="CpuFanText" Text="-- RPM" FontSize="20" FontWeight="Bold"/>
+                </StackPanel>
+                <StackPanel Grid.Column="2">
+                    <TextBlock Text="GPU fan" Foreground="Gray" FontSize="11"/>
+                    <TextBlock x:Name="GpuFanText" Text="-- RPM" FontSize="20" FontWeight="Bold"/>
+                </StackPanel>
+            </Grid>
+        </GroupBox>
+
+        <!-- Performance mode -->
+        <GroupBox Grid.Row="2" Header="Performance mode" Margin="0,0,0,10">
+            <StackPanel Orientation="Horizontal" Margin="6">
+                <RadioButton x:Name="BalancedRadio" Content="Balanced" GroupName="Mode" Margin="0,0,16,0" Checked="ModeRadio_Checked"/>
+                <RadioButton x:Name="PerformanceRadio" Content="Performance" GroupName="Mode" Margin="0,0,16,0" Checked="ModeRadio_Checked"/>
+                <RadioButton x:Name="CoolRadio" Content="Cool" GroupName="Mode" Checked="ModeRadio_Checked"/>
+            </StackPanel>
+        </GroupBox>
+
+        <!-- Fan speed control -->
+        <GroupBox Grid.Row="3" Header="Fan speed" Margin="0,0,0,10">
+            <StackPanel Margin="6">
+                <CheckBox x:Name="ManualCheckBox" Content="Manual fan speed" Checked="ManualCheckBox_Changed" Unchecked="ManualCheckBox_Changed"/>
+
+                <Grid Margin="0,10,0,0" IsEnabled="{Binding ElementName=ManualCheckBox, Path=IsChecked}">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="60"/>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="50"/>
+                    </Grid.ColumnDefinitions>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="Auto"/>
+                    </Grid.RowDefinitions>
+
+                    <TextBlock Grid.Row="0" Grid.Column="0" Text="CPU" VerticalAlignment="Center"/>
+                    <Slider x:Name="CpuFanSlider" Grid.Row="0" Grid.Column="1" Minimum="0" Maximum="60"
+                            VerticalAlignment="Center" ValueChanged="FanSlider_ValueChanged"/>
+                    <TextBlock x:Name="CpuFanSliderText" Grid.Row="0" Grid.Column="2" Text="0" VerticalAlignment="Center"/>
+
+                    <TextBlock Grid.Row="1" Grid.Column="0" Text="GPU" VerticalAlignment="Center" Margin="0,8,0,0"/>
+                    <Slider x:Name="GpuFanSlider" Grid.Row="1" Grid.Column="1" Minimum="0" Maximum="60"
+                            VerticalAlignment="Center" Margin="0,8,0,0" ValueChanged="FanSlider_ValueChanged"/>
+                    <TextBlock x:Name="GpuFanSliderText" Grid.Row="1" Grid.Column="2" Text="0" VerticalAlignment="Center" Margin="0,8,0,0"/>
+                </Grid>
+
+                <Button x:Name="ApplyFanButton" Content="Apply fan speed" Margin="0,10,0,0" Padding="0,6"
+                        IsEnabled="False" Click="ApplyFanButton_Click"/>
+
+                <Separator Margin="0,12,0,12"/>
+
+                <CheckBox x:Name="MaxFanCheckBox" Content="Force max fan speed" Checked="MaxFanCheckBox_Changed" Unchecked="MaxFanCheckBox_Changed"/>
+            </StackPanel>
+        </GroupBox>
+
+        <TextBlock Grid.Row="4" x:Name="FooterText" VerticalAlignment="Bottom" Foreground="Gray" FontSize="11"
+                   Text="Closing this window minimizes to the tray. Use the tray icon to exit."/>
+    </Grid>
+</Window>
