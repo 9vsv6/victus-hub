@@ -1,4 +1,5 @@
 using System.Threading;
+using System.Threading.Tasks;
 using System.Windows;
 using MessageBox = System.Windows.MessageBox;
 
@@ -15,7 +16,7 @@ public partial class App : System.Windows.Application {
     private Mutex? _singleInstanceMutex;
     private EventWaitHandle? _showEvent;
 
-    protected override void OnStartup(StartupEventArgs e) {
+    protected override async void OnStartup(StartupEventArgs e) {
         base.OnStartup(e);
 
         _singleInstanceMutex = new Mutex(true, MutexName, out bool isNewInstance);
@@ -42,6 +43,15 @@ public partial class App : System.Windows.Application {
             args.Handled = true;
         };
 
+        bool startMinimized = e.Args.Contains("--minimized");
+
+        if (startMinimized) {
+            // Launching this early in logon (via the Run key) can race the taskbar/notification
+            // area still initializing, silently preventing the tray icon from ever appearing.
+            // A short wait here avoids that — imperceptible for a background start anyway.
+            await Task.Delay(TimeSpan.FromSeconds(8));
+        }
+
         var window = new MainWindow();
 
         var watcherThread = new Thread(() => {
@@ -56,7 +66,7 @@ public partial class App : System.Windows.Application {
         }) { IsBackground = true };
         watcherThread.Start();
 
-        if (e.Args.Contains("--minimized")) {
+        if (startMinimized) {
             window.WindowState = WindowState.Minimized;
             window.ShowInTaskbar = false;
             window.Show();

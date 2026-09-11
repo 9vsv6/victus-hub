@@ -1,8 +1,11 @@
 using System.Diagnostics;
 using System.IO;
 using System.Linq;
+using System.Runtime.InteropServices;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Interop;
+using System.Windows.Media;
 using System.Windows.Threading;
 using HpVictusControl.Bios;
 using HpVictusControl.Games;
@@ -34,10 +37,18 @@ public partial class MainWindow : Window {
     public MainWindow() {
         InitializeComponent();
 
+        if (_settings.LastTab == "Drivers") DriversTabRadio.IsChecked = true;
+        else if (_settings.LastTab == "Settings") SettingsTabRadio.IsChecked = true;
+
+        RestoreWindowBounds();
+
         ApplyTheme(_settings.DarkTheme);
         DarkThemeCheckBox.IsChecked = _settings.DarkTheme;
         TempAlertCheckBox.IsChecked = _settings.TempAlertsEnabled;
         TempAlertSlider.Value = _settings.TempAlertThreshold;
+        ExitOnCloseCheckBox.IsChecked = _settings.ExitOnClose;
+        AlwaysOnTopCheckBox.IsChecked = _settings.AlwaysOnTop;
+        AppVersionText.Text = $"Version {System.Reflection.Assembly.GetExecutingAssembly().GetName().Version}";
 
         _tray.ShowRequested += () => Dispatcher.Invoke(() => {
             ShowInTaskbar = true;
@@ -59,6 +70,116 @@ public partial class MainWindow : Window {
 
         Loaded += MainWindow_Loaded;
         Closing += MainWindow_Closing;
+    }
+
+    protected override void OnSourceInitialized(EventArgs e) {
+        base.OnSourceInitialized(e);
+        // Without this, DWM keeps drawing the native light-mode title bar/frame even
+        // though our content is dark, which shows up as a mismatched pale seam at the
+        // very top of the window.
+        ApplyTitleBarTheme(_settings.DarkTheme);
+        RegisterCycleModeHotkey();
+    }
+
+    [DllImport("dwmapi.dll")]
+    private static extern int DwmSetWindowAttribute(IntPtr hwnd, int attribute, ref int value, int size);
+
+    private const int DwmwaUseImmersiveDarkMode = 20;
+
+    private void ApplyTitleBarTheme(bool dark) {
+        IntPtr hwnd = new WindowInteropHelper(this).Handle;
+        if (hwnd == IntPtr.Zero) return;
+        int useDark = dark ? 1 : 0;
+        DwmSetWindowAttribute(hwnd, DwmwaUseImmersiveDarkMode, ref useDark, sizeof(int));
+    }
+
+    // ----- Global hotkey: Ctrl+Alt+F12 cycles performance mode from anywhere -----------------
+
+    [DllImport("user32.dll")]
+    private static extern bool RegisterHotKey(IntPtr hWnd, int id, uint fsModifiers, uint vk);
+
+    [DllImport("user32.dll")]
+    private static extern bool UnregisterHotKey(IntPtr hWnd, int id);
+
+    private const int CycleModeHotkeyId = 0x4859;
+    private const uint ModControl = 0x0002;
+    private const uint ModAlt = 0x0001;
+    private const uint VkF12 = 0x7B;
+    private const int WmHotkey = 0x0312;
+
+    private void RegisterCycleModeHotkey() {
+        try {
+            IntPtr hwnd = new WindowInteropHelper(this).Handle;
+            HwndSource.FromHwnd(hwnd)?.AddHook(HotkeyWndProc);
+            RegisterHotKey(hwnd, CycleModeHotkeyId, ModControl | ModAlt, VkF12);
+        } catch {
+            // Best-effort — another app may already own this key combination.
+        }
+    }
+
+    private IntPtr HotkeyWndProc(IntPtr hwnd, int msg, IntPtr wParam, IntPtr lParam, ref bool handled) {
+        if (msg == WmHotkey && wParam.ToInt32() == CycleModeHotkeyId) {
+            CycleModeViaHotkey();
+            handled = true;
+        }
+        return IntPtr.Zero;
+    }
+
+    private void CycleModeViaHotkey() {
+        HpFanMode next = _currentMode switch {
+            HpFanMode.Balanced => HpFanMode.Performance,
+            HpFanMode.Performance => HpFanMode.Cool,
+            _ => HpFanMode.Balanced
+        };
+        SetActiveModeRadio(next);
+        _tray.ShowBalloon("HP Victus Control", $"Switched to {next} mode");
+    }
+
+    private void RestoreWindowBounds() {
+        if (_settings.WindowWidth <= 0 || _settings.WindowHeight <= 0) return;
+
+        // Guard against restoring to a monitor that's since been unplugged/undocked, which
+        // would otherwise put the window somewhere the user can't see or reach it.
+        double vLeft = SystemParameters.VirtualScreenLeft;
+        double vTop = SystemParameters.VirtualScreenTop;
+        double vRight = vLeft + SystemParameters.VirtualScreenWidth;
+        double vBottom = vTop + SystemParameters.VirtualScreenHeight;
+        bool onScreen = _settings.WindowLeft + 50 < vRight
+            && _settings.WindowLeft + _settings.WindowWidth - 50 > vLeft
+            && _settings.WindowTop + 50 < vBottom
+            && _settings.WindowTop + _settings.WindowHeight - 50 > vTop;
+        if (!onScreen) return;
+
+        WindowStartupLocation = WindowStartupLocation.Manual;
+        Left = _settings.WindowLeft;
+        Top = _settings.WindowTop;
+        Width = Math.Max(MinWidth, _settings.WindowWidth);
+        Height = Math.Max(MinHeight, _settings.WindowHeight);
+    }
+
+    private void SaveWindowBounds() {
+        if (WindowState != WindowState.Normal) return;
+        _settings.WindowLeft = Left;
+        _settings.WindowTop = Top;
+        _settings.WindowWidth = Width;
+        _settings.WindowHeight = Height;
+        _settings.Save();
+    }
+
+    private void TopTab_Changed(object sender, RoutedEventArgs e) {
+        // PerformanceTabRadio has IsChecked="True" in XAML, which fires this Checked event
+        // during InitializeComponent() itself — before the later-declared tab panels (deep
+        // inside the ScrollViewer) have been constructed and assigned to their fields yet.
+        if (PerformanceTabPanel == null) return;
+
+        PerformanceTabPanel.Visibility = PerformanceTabRadio.IsChecked == true ? Visibility.Visible : Visibility.Collapsed;
+        DriversTabPanel.Visibility = DriversTabRadio.IsChecked == true ? Visibility.Visible : Visibility.Collapsed;
+        SettingsTabPanel.Visibility = SettingsTabRadio.IsChecked == true ? Visibility.Visible : Visibility.Collapsed;
+
+        if (_initializing) return;
+        _settings.LastTab = DriversTabRadio.IsChecked == true ? "Drivers"
+            : SettingsTabRadio.IsChecked == true ? "Settings" : "Performance";
+        _settings.Save();
     }
 
     private void DarkThemeCheckBox_Changed(object sender, RoutedEventArgs e) {
@@ -84,6 +205,21 @@ public partial class MainWindow : Window {
         }
 
         _settings.StartWithWindows = enabled;
+        _settings.Save();
+    }
+
+    private void AlwaysOnTopCheckBox_Changed(object sender, RoutedEventArgs e) {
+        bool onTop = AlwaysOnTopCheckBox.IsChecked == true;
+        Topmost = onTop;
+
+        if (_initializing) return;
+        _settings.AlwaysOnTop = onTop;
+        _settings.Save();
+    }
+
+    private void ExitOnCloseCheckBox_Changed(object sender, RoutedEventArgs e) {
+        if (_initializing) return;
+        _settings.ExitOnClose = ExitOnCloseCheckBox.IsChecked == true;
         _settings.Save();
     }
 
@@ -126,16 +262,36 @@ public partial class MainWindow : Window {
         (string Key, Color Light, Color Dark)[] palette = {
             ("AccentBrush", Color.FromRgb(0x22, 0xC5, 0x5E), Color.FromRgb(0x22, 0xC5, 0x5E)),
             ("AccentHoverBrush", Color.FromRgb(0x1C, 0xA8, 0x4E), Color.FromRgb(0x16, 0xA3, 0x4A)),
-            ("CardBrush", Color.FromRgb(0xFF, 0xFF, 0xFF), Color.FromRgb(0x1E, 0x21, 0x26)),
-            ("BorderBrush2", Color.FromRgb(0xE4, 0xE6, 0xEB), Color.FromRgb(0x2C, 0x30, 0x38)),
-            ("TrackBrush", Color.FromRgb(0xEE, 0xF0, 0xF3), Color.FromRgb(0x26, 0x29, 0x2F)),
+            ("CardBrush", Color.FromRgb(0xFF, 0xFF, 0xFF), Color.FromRgb(0x15, 0x17, 0x1A)),
+            ("BorderBrush2", Color.FromRgb(0xE4, 0xE6, 0xEB), Color.FromRgb(0x26, 0x2B, 0x31)),
+            ("TrackBrush", Color.FromRgb(0xEE, 0xF0, 0xF3), Color.FromRgb(0x1D, 0x21, 0x25)),
             ("TextPrimaryBrush", Color.FromRgb(0x1B, 0x1F, 0x24), Color.FromRgb(0xF2, 0xF3, 0xF5)),
             ("TextSecondaryBrush", Color.FromRgb(0x8A, 0x8F, 0x98), Color.FromRgb(0x9A, 0xA0, 0xAA)),
-            ("WindowBackgroundBrush", Color.FromRgb(0xF4, 0xF5, 0xF7), Color.FromRgb(0x12, 0x13, 0x16)),
+            ("GlowFillBrush", Color.FromRgb(0xE8, 0xF9, 0xEF), Color.FromRgb(0x1B, 0x33, 0x23)),
         };
 
         foreach ((string key, Color light, Color darkColor) in palette)
             Resources[key] = new SolidColorBrush(dark ? darkColor : light);
+
+        Resources["WindowBackgroundBrush"] = dark
+            ? CreateDarkWindowBackground()
+            : new SolidColorBrush(Color.FromRgb(0xF4, 0xF5, 0xF7));
+
+        ApplyTitleBarTheme(dark);
+    }
+
+    // A soft green-tinted glow radiating from the upper-left, fading to near-black —
+    // the "gaming hub" backdrop, in place of a flat dark fill.
+    private static RadialGradientBrush CreateDarkWindowBackground() {
+        var brush = new RadialGradientBrush {
+            GradientOrigin = new System.Windows.Point(0.15, 0.0),
+            Center = new System.Windows.Point(0.15, 0.0),
+            RadiusX = 1.0,
+            RadiusY = 0.9
+        };
+        brush.GradientStops.Add(new GradientStop(Color.FromRgb(0x16, 0x24, 0x1B), 0.0));
+        brush.GradientStops.Add(new GradientStop(Color.FromRgb(0x0A, 0x0B, 0x0D), 0.55));
+        return brush;
     }
 
     private void MainWindow_Loaded(object sender, RoutedEventArgs e) {
@@ -168,6 +324,7 @@ public partial class MainWindow : Window {
 
         RenderGameProfilesList();
         PopulateRefreshRateOptions();
+        ShowLastCheckedTime();
 
         RefreshStats();
         _pollTimer.Start();
@@ -182,12 +339,15 @@ public partial class MainWindow : Window {
     }
 
     private void RefreshStats() {
-        if (MemoryInfo.TryGetUsage(out double usedGb, out double totalGb))
-            RamText.Text = $"{usedGb:0.#}/{totalGb:0.#} GB";
+        if (MemoryInfo.TryGetUsage(out double usedGb, out double totalGb)) {
+            int ramPercent = totalGb > 0 ? (int)Math.Round(usedGb / totalGb * 100) : 0;
+            RamText.Text = $"{usedGb:0.#}/{totalGb:0.#} GB ({ramPercent}%)";
+        }
 
         if (CpuUsageSensor.TryGetUsagePercent(out double cpuUsage))
             CpuUsageText.Text = $"{cpuUsage:0}%";
 
+        RefreshBatteryStatus();
         RefreshGpuStats();
 
         if (!_bios.IsAvailable) return;
@@ -231,6 +391,22 @@ public partial class MainWindow : Window {
         CheckGameProfiles();
     }
 
+    private void RefreshBatteryStatus() {
+        var status = System.Windows.Forms.SystemInformation.PowerStatus;
+        // No battery at all (desktop, or a battery report Windows can't read) reports 255%.
+        if (status.BatteryLifePercent > 1f) {
+            BatteryStatusText.Text = "Battery not detected";
+            return;
+        }
+
+        int percent = (int)Math.Round(status.BatteryLifePercent * 100);
+        bool charging = status.BatteryChargeStatus.HasFlag(System.Windows.Forms.BatteryChargeStatus.Charging);
+        bool onAc = status.PowerLineStatus == System.Windows.Forms.PowerLineStatus.Online;
+
+        string state = charging ? "Charging" : onAc ? "Plugged in" : "On battery";
+        BatteryStatusText.Text = $"Battery {percent}%  ·  {state}";
+    }
+
     // nvidia-smi is a subprocess call, so this runs off the poll tick instead of blocking it.
     private bool _gpuStatsQueryInFlight;
 
@@ -238,11 +414,18 @@ public partial class MainWindow : Window {
         if (!NvidiaGpuSensor.IsAvailable || _gpuStatsQueryInFlight) return;
 
         _gpuStatsQueryInFlight = true;
-        (double? temperature, double? utilization) = await NvidiaGpuSensor.TryReadStatsAsync();
+        (double? temperature, double? utilization, double? powerDraw, double? clockMhz) = await NvidiaGpuSensor.TryReadStatsAsync();
         _gpuStatsQueryInFlight = false;
 
         GpuTempText.Text = temperature.HasValue ? $"{temperature.Value:0.#}°C" : "N/A";
         GpuUsageText.Text = utilization.HasValue ? $"{utilization.Value:0}%" : "N/A";
+
+        if (powerDraw.HasValue || clockMhz.HasValue) {
+            string power = powerDraw.HasValue ? $"{powerDraw.Value:0}W" : "--W";
+            string clock = clockMhz.HasValue ? $"{clockMhz.Value:0} MHz" : "-- MHz";
+            GpuDetailText.Text = $"GPU {power}  ·  {clock}";
+            GpuDetailText.Visibility = Visibility.Visible;
+        }
         CheckTemperatureAlert("GPU", temperature, ref _gpuTempAlertActive);
         _lastGpuTempForFan = temperature;
         ApplyAutoFanCurve();
@@ -528,6 +711,28 @@ public partial class MainWindow : Window {
 
     private void CheckUpdatesButton_Click(object sender, RoutedEventArgs e) => _ = CheckForUpdatesAsync();
 
+    private void ShowLastCheckedTime() {
+        if (_settings.LastUpdateCheckUtc is not DateTime lastChecked) return;
+        TimeSpan age = DateTime.UtcNow - lastChecked;
+        string ago = age.TotalMinutes < 1 ? "just now"
+            : age.TotalHours < 1 ? $"{(int)age.TotalMinutes} min ago"
+            : age.TotalDays < 1 ? $"{(int)age.TotalHours} hr ago"
+            : $"{(int)age.TotalDays} day(s) ago";
+        LastCheckedText.Text = $"Last checked {ago}";
+        LastCheckedText.Visibility = Visibility.Visible;
+    }
+
+    private void OpenDownloadsFolderButton_Click(object sender, RoutedEventArgs e) {
+        try {
+            string folder = Path.Combine(
+                Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments), "HP Victus Control", "Downloads");
+            Directory.CreateDirectory(folder);
+            Process.Start(new ProcessStartInfo(folder) { UseShellExecute = true });
+        } catch {
+            // Best-effort — worst case nothing happens and the user can navigate there manually.
+        }
+    }
+
     private async Task CheckForUpdatesAsync() {
         CheckUpdatesButton.IsEnabled = false;
         UpdatesListPanel.Children.Clear();
@@ -542,15 +747,25 @@ public partial class MainWindow : Window {
             List<HpDriverUpdate> rawUpdates = await HpDriverUpdateService.GetUpdatesForSerialAsync(serial);
             List<HpDriverUpdate> updates = HpDriverUpdateService.GetActionableUpdates(rawUpdates);
 
+            if (NvidiaGpuSensor.IsAvailable) {
+                UpdatesStatusText.Text = "Checking NVIDIA directly for the real latest GPU driver...";
+                HpDriverUpdate? nvidiaUpdate = await NvidiaDriverUpdateService.GetUpdateIfNewerAsync();
+                if (nvidiaUpdate != null) updates.Add(nvidiaUpdate);
+            }
+
             if (updates.Count == 0) {
                 UpdatesStatusText.Text = "You're up to date — no newer drivers or BIOS found for this model.";
             } else {
                 _lastUpdates = updates;
                 UpdatesStatusText.Text = $"{updates.Count} update(s) available:";
-                RenderUpdateRows(SortUpdates(updates));
+                RenderUpdateRows(updates);
                 SortBar.Visibility = Visibility.Visible;
                 BulkActionsBar.Visibility = Visibility.Visible;
             }
+
+            _settings.LastUpdateCheckUtc = DateTime.UtcNow;
+            _settings.Save();
+            ShowLastCheckedTime();
         } catch (HpUpdateException ex) {
             UpdatesStatusText.Text = $"Couldn't check for updates: {ex.Message}";
         } catch (Exception ex) {
@@ -562,24 +777,57 @@ public partial class MainWindow : Window {
 
     private void SortMode_Changed(object sender, RoutedEventArgs e) {
         if (_lastUpdates.Count == 0) return;
-        RenderUpdateRows(SortUpdates(_lastUpdates));
+        RenderUpdateRows(_lastUpdates);
     }
 
-    private List<HpDriverUpdate> SortUpdates(List<HpDriverUpdate> updates) {
-        if (SortByTypeRadio.IsChecked == true)
-            return updates
-                .OrderBy(u => u.Category, StringComparer.OrdinalIgnoreCase)
-                .ThenByDescending(u => HpDriverUpdateService.ParseReleaseDate(u.ReleaseDate))
-                .ToList();
+    private static readonly (string Match, string Section)[] SectionRules = {
+        ("BIOS", "BIOS"),
+        ("Graphics", "Graphics"),
+        ("Chipset", "Chipset"),
+        ("Network", "Network"),
+        ("Firmware", "Storage & firmware"),
+    };
 
-        return updates.OrderByDescending(u => HpDriverUpdateService.ParseReleaseDate(u.ReleaseDate)).ToList();
+    private static string GetSectionName(string category) {
+        foreach ((string match, string section) in SectionRules)
+            if (category.Contains(match, StringComparison.OrdinalIgnoreCase)) return section;
+        return "Other";
     }
 
     private void RenderUpdateRows(List<HpDriverUpdate> updates) {
         UpdatesListPanel.Children.Clear();
         _updateEntries.Clear();
-        foreach (HpDriverUpdate update in updates) AddUpdateRow(update);
+
+        List<IGrouping<string, HpDriverUpdate>> groups = updates.GroupBy(u => GetSectionName(u.Category)).ToList();
+
+        IEnumerable<IGrouping<string, HpDriverUpdate>> orderedGroups = SortByTypeRadio.IsChecked == true
+            ? groups.OrderBy(g => g.Key, StringComparer.OrdinalIgnoreCase)
+            : groups.OrderByDescending(g => g.Max(u => HpDriverUpdateService.ParseReleaseDate(u.ReleaseDate)));
+
+        bool firstSection = true;
+        foreach (IGrouping<string, HpDriverUpdate> group in orderedGroups) {
+            AddSectionHeader(group.Key, firstSection);
+            firstSection = false;
+
+            bool firstRowInSection = true;
+            foreach (HpDriverUpdate update in group.OrderByDescending(u => HpDriverUpdateService.ParseReleaseDate(u.ReleaseDate))) {
+                if (!firstRowInSection) {
+                    UpdatesListPanel.Children.Add(new Border { Height = 1, Background = (Brush)FindResource("BorderBrush2") });
+                }
+                firstRowInSection = false;
+                AddUpdateRow(update);
+            }
+        }
+
         UpdateBulkButtonsState();
+    }
+
+    private void AddSectionHeader(string name, bool isFirst) {
+        UpdatesListPanel.Children.Add(new TextBlock {
+            Text = name.ToUpperInvariant(), FontSize = 10, FontWeight = FontWeights.Bold,
+            Foreground = (Brush)FindResource("AccentBrush"),
+            Margin = new Thickness(0, isFirst ? 2 : 20, 0, 6)
+        });
     }
 
     private void AddUpdateRow(HpDriverUpdate update) {
@@ -632,11 +880,6 @@ public partial class MainWindow : Window {
         downloadButton.Click += async (_, _) => await DownloadEntryAsync(entry);
 
         UpdatesListPanel.Children.Add(row);
-        if (UpdatesListPanel.Children.Count > 1) {
-            UpdatesListPanel.Children.Insert(UpdatesListPanel.Children.Count - 1, new Border {
-                Height = 1, Background = (Brush)FindResource("BorderBrush2")
-            });
-        }
     }
 
     private void SelectAllCheckBox_Changed(object sender, RoutedEventArgs e) {
@@ -813,8 +1056,10 @@ public partial class MainWindow : Window {
         if (_activeGameProfileExeName != null) {
             bool stillRunning = Process.GetProcessesByName(_activeGameProfileExeName).Length > 0;
             if (!stillRunning) {
+                string endedGame = _activeGameProfileExeName;
                 ApplyMode(_preGameMode);
                 _activeGameProfileExeName = null;
+                _tray.ShowBalloon("HP Victus Control", $"{endedGame} closed — restored {_preGameMode} mode");
             } else {
                 return;
             }
@@ -828,6 +1073,7 @@ public partial class MainWindow : Window {
             _preGameMode = _currentMode;
             ApplyMode(gameMode);
             _activeGameProfileExeName = exeName;
+            _tray.ShowBalloon("HP Victus Control", $"{profile.Name} detected — switched to {gameMode} mode");
             break;
         }
     }
@@ -948,12 +1194,119 @@ public partial class MainWindow : Window {
         RenderGameProfilesList();
     }
 
+    // ----- About & support ------------------------------------------------------------------
+
+    private string? _pendingReleaseUrl;
+
+    private async void CheckForAppUpdateButton_Click(object sender, RoutedEventArgs e) {
+        CheckForAppUpdateButton.IsEnabled = false;
+        OpenReleasePageButton.Visibility = Visibility.Collapsed;
+        AppUpdateStatusText.Visibility = Visibility.Visible;
+        AppUpdateStatusText.Text = "Checking for updates...";
+
+        Version current = System.Reflection.Assembly.GetExecutingAssembly().GetName().Version ?? new Version(1, 0, 0);
+        AppUpdateResult result = await AppUpdateChecker.CheckAsync(current);
+
+        if (result.Error != null) {
+            AppUpdateStatusText.Text = result.Error;
+        } else if (result.UpdateAvailable) {
+            AppUpdateStatusText.Text = $"Version {result.LatestVersion} is available (you have {current}).";
+            if (!string.IsNullOrEmpty(result.ReleaseUrl)) {
+                _pendingReleaseUrl = result.ReleaseUrl;
+                OpenReleasePageButton.Visibility = Visibility.Visible;
+            }
+        } else {
+            AppUpdateStatusText.Text = "You're up to date.";
+        }
+
+        CheckForAppUpdateButton.IsEnabled = true;
+    }
+
+    private void OpenReleasePageButton_Click(object sender, RoutedEventArgs e) {
+        if (string.IsNullOrEmpty(_pendingReleaseUrl)) return;
+        try {
+            Process.Start(new ProcessStartInfo(_pendingReleaseUrl) { UseShellExecute = true });
+        } catch {
+            // Best-effort — worst case nothing happens and the user can open it manually.
+        }
+    }
+
+    private void CopyDiagnosticsButton_Click(object sender, RoutedEventArgs e) {
+        try {
+            System.Windows.Clipboard.SetText(BuildDiagnosticsReport());
+            MessageBox.Show(this, "Diagnostics copied to clipboard.", "HP Victus Control",
+                MessageBoxButton.OK, MessageBoxImage.Information);
+        } catch (Exception ex) {
+            MessageBox.Show(this, $"Couldn't copy diagnostics: {ex.Message}", "HP Victus Control",
+                MessageBoxButton.OK, MessageBoxImage.Warning);
+        }
+    }
+
+    private string BuildDiagnosticsReport() {
+        var sb = new System.Text.StringBuilder();
+        Version version = System.Reflection.Assembly.GetExecutingAssembly().GetName().Version ?? new Version(1, 0, 0);
+
+        sb.AppendLine("HP Victus Control diagnostics");
+        sb.AppendLine($"App version: {version}");
+        sb.AppendLine($"OS: {Environment.OSVersion.VersionString}");
+
+        try {
+            using var cpuSearcher = new System.Management.ManagementObjectSearcher("SELECT Name FROM Win32_Processor");
+            foreach (System.Management.ManagementBaseObject o in cpuSearcher.Get())
+                sb.AppendLine($"CPU: {o["Name"]}");
+        } catch { /* best-effort */ }
+
+        try {
+            using var gpuSearcher = new System.Management.ManagementObjectSearcher("SELECT Name, DriverVersion FROM Win32_VideoController");
+            foreach (System.Management.ManagementBaseObject o in gpuSearcher.Get())
+                sb.AppendLine($"GPU: {o["Name"]} (driver {o["DriverVersion"]})");
+        } catch { /* best-effort */ }
+
+        try {
+            using var biosSearcher = new System.Management.ManagementObjectSearcher("SELECT SMBIOSBIOSVersion FROM Win32_BIOS");
+            foreach (System.Management.ManagementBaseObject o in biosSearcher.Get())
+                sb.AppendLine($"System BIOS: {o["SMBIOSBIOSVersion"]}");
+        } catch { /* best-effort */ }
+
+        sb.AppendLine();
+        sb.AppendLine($"HP BIOS control interface available: {_bios.IsAvailable}");
+        sb.AppendLine($"Performance mode: {_currentMode}");
+        sb.AppendLine($"CPU temp: {TemperatureText.Text}   GPU temp: {GpuTempText.Text}");
+        sb.AppendLine($"CPU usage: {CpuUsageText.Text}   GPU usage: {GpuUsageText.Text}");
+        sb.AppendLine($"RAM: {RamText.Text}");
+        sb.AppendLine($"CPU fan: {CpuFanText.Text}   GPU fan: {GpuFanText.Text}");
+        sb.AppendLine(BatteryStatusText.Text);
+
+        return sb.ToString();
+    }
+
+    private void ResetToDefaultsButton_Click(object sender, RoutedEventArgs e) {
+        MessageBoxResult confirm = MessageBox.Show(this,
+            "This resets all app preferences — theme, performance mode, auto-switch, fan curve, alerts, and " +
+            "game profiles — back to defaults. Restart HP Victus Control afterward for it to fully take effect. Continue?",
+            "Reset to defaults", MessageBoxButton.YesNo, MessageBoxImage.Warning);
+        if (confirm != MessageBoxResult.Yes) return;
+
+        new AppSettings().Save();
+        MessageBox.Show(this, "Defaults restored. Restart HP Victus Control for the change to fully take effect.",
+            "HP Victus Control", MessageBoxButton.OK, MessageBoxImage.Information);
+    }
+
     // ----- Window / tray lifecycle --------------------------------------------------------
 
     private bool _balloonShown;
 
     private void MainWindow_Closing(object? sender, System.ComponentModel.CancelEventArgs e) {
-        if (_exitRequested) return;
+        if (_exitRequested) {
+            SaveWindowBounds();
+            return;
+        }
+
+        if (_settings.ExitOnClose) {
+            e.Cancel = true; // this Close() is superseded by the real one ExitApplication triggers below
+            ExitApplication();
+            return;
+        }
 
         e.Cancel = true;
         Hide();
@@ -968,6 +1321,11 @@ public partial class MainWindow : Window {
         _exitRequested = true;
         _pollTimer.Stop();
         Microsoft.Win32.SystemEvents.PowerModeChanged -= SystemEvents_PowerModeChanged;
+        try {
+            UnregisterHotKey(new WindowInteropHelper(this).Handle, CycleModeHotkeyId);
+        } catch {
+            // Best-effort.
+        }
         _tray.Dispose();
         _bios.Dispose();
         Close();

@@ -148,13 +148,44 @@ public static class HpDriverUpdateService {
         // machine, where "Intel" legitimately appears for unrelated reasons.
         if (IsForUninstalledWirelessVendor(update.Title, installedDrivers)) return true;
 
+        // NVIDIA GPU updates now come from NVIDIA's own lookup service instead (confirmed HP's
+        // catalog runs behind — its "latest" NVIDIA listing translates to marketing version
+        // 591.91 while NVIDIA's own site already had 616.92 for this exact GPU). Always exclude
+        // HP's NVIDIA-branded graphics entries so the direct source is the only one shown.
+        if (update.Category.Contains("Graphics", StringComparison.OrdinalIgnoreCase)
+            && update.Title.Contains("nvidia", StringComparison.OrdinalIgnoreCase)) {
+            return true;
+        }
+
         if (!TryExtractVersion(update.Version, out Version? catalogVersion)) return false; // can't parse — don't hide it
 
-        (string DeviceName, string? DriverVersion)? match = FindBestDriverMatch(update.Title, installedDrivers);
+        // For graphics drivers specifically, the Category field HP already gives us makes a
+        // single vendor-word match safe (e.g. "NVIDIA Graphics Driver" loses both "nvidia" and
+        // "graphics" to noise filtering under the generic matcher, leaving only one word and no
+        // confident match — but "Driver-Graphics" + "nvidia" is already unambiguous: a laptop
+        // has at most one GPU per vendor).
+        (string DeviceName, string? DriverVersion)? match = update.Category.Contains("Graphics", StringComparison.OrdinalIgnoreCase)
+            ? FindGraphicsDriverMatch(update.Title, installedDrivers)
+            : FindBestDriverMatch(update.Title, installedDrivers);
+
         if (match is null || !TryExtractVersion(match.Value.DriverVersion ?? "", out Version? installedVersion))
             return false; // no confident match — don't hide it
 
         return installedVersion! >= catalogVersion!;
+    }
+
+    private static readonly string[] GpuVendors = { "nvidia", "amd", "intel" };
+
+    private static (string DeviceName, string? DriverVersion)? FindGraphicsDriverMatch(
+            string title, List<(string DeviceName, string? DriverVersion)> installedDrivers) {
+        string lowerTitle = title.ToLowerInvariant();
+        string? vendor = GpuVendors.FirstOrDefault(v => lowerTitle.Contains(v));
+        if (vendor is null) return null;
+
+        foreach ((string DeviceName, string? DriverVersion) candidate in installedDrivers) {
+            if (candidate.DeviceName.ToLowerInvariant().Contains(vendor)) return candidate;
+        }
+        return null;
     }
 
     private static readonly string[] WirelessVendors = { "intel", "realtek", "mediatek", "qualcomm", "broadcom" };

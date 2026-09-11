@@ -4,29 +4,28 @@ using Microsoft.Win32;
 namespace HpVictusControl;
 
 /// <summary>
-/// Registers/unregisters the app to launch at logon via a Scheduled Task running at highest
-/// privileges — unlike a registry Run-key entry, a task configured this way launches the
-/// already-elevated app without showing a UAC prompt on every login.
+/// Registers/unregisters the app to launch at logon via the classic per-user Registry Run key.
+/// This shows up in Task Manager's Startup apps list (unlike a Scheduled Task), at the cost of
+/// a UAC prompt on every login since the app requires admin.
 /// </summary>
 public static class StartupManager {
 
-    private const string TaskName = "HpVictusControlStartup";
     private const string RunKeyPath = @"Software\Microsoft\Windows\CurrentVersion\Run";
-    private const string LegacyValueName = "HpVictusControl";
+    private const string ValueName = "HpVictusControl";
+
+    // Name used by an earlier version of this app that registered via Scheduled Task instead.
+    private const string LegacyTaskName = "HpVictusControlStartup";
 
     public static void SetEnabled(bool enabled) {
-        // Clean up the old registry-based approach from before the scheduled-task switch.
-        using (RegistryKey? key = Registry.CurrentUser.OpenSubKey(RunKeyPath, writable: true))
-            key?.DeleteValue(LegacyValueName, throwOnMissingValue: false);
+        RunSchTasks($"/Delete /TN \"{LegacyTaskName}\" /F");
 
+        using RegistryKey key = Registry.CurrentUser.CreateSubKey(RunKeyPath, writable: true);
         if (enabled) {
             string? exePath = Environment.ProcessPath;
             if (string.IsNullOrEmpty(exePath)) return;
-
-            RunSchTasks($"/Create /TN \"{TaskName}\" /TR \"\\\"{exePath}\\\" --minimized\" " +
-                        "/SC ONLOGON /RL HIGHEST /F");
+            key.SetValue(ValueName, $"\"{exePath}\" --minimized");
         } else {
-            RunSchTasks($"/Delete /TN \"{TaskName}\" /F");
+            key.DeleteValue(ValueName, throwOnMissingValue: false);
         }
     }
 
@@ -40,7 +39,7 @@ public static class StartupManager {
             });
             process?.WaitForExit(10_000);
         } catch {
-            // Best-effort — if this fails, the checkbox state just won't have taken effect.
+            // Best-effort cleanup — not fatal if the old task is already gone or can't be reached.
         }
     }
 }

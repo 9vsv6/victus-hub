@@ -20,20 +20,21 @@ public static class NvidiaGpuSensor {
         return File.Exists(candidate) ? candidate : null;
     }
 
-    /// <summary>Temperature (Celsius) and utilization (percent), read in a single nvidia-smi call.</summary>
-    public static async Task<(double? Temperature, double? Utilization)> TryReadStatsAsync() {
-        if (SmiPath == null) return (null, null);
+    /// <summary>Temperature (Celsius), utilization (percent), power draw (watts), and core clock
+    /// (MHz), read in a single nvidia-smi call.</summary>
+    public static async Task<(double? Temperature, double? Utilization, double? PowerDrawWatts, double? ClockMHz)> TryReadStatsAsync() {
+        if (SmiPath == null) return (null, null, null, null);
 
         try {
             var psi = new ProcessStartInfo(SmiPath,
-                "--query-gpu=temperature.gpu,utilization.gpu --format=csv,noheader,nounits") {
+                "--query-gpu=temperature.gpu,utilization.gpu,power.draw,clocks.gr --format=csv,noheader,nounits") {
                 RedirectStandardOutput = true,
                 UseShellExecute = false,
                 CreateNoWindow = true,
             };
 
             using Process? process = Process.Start(psi);
-            if (process == null) return (null, null);
+            if (process == null) return (null, null, null, null);
 
             string output = await process.StandardOutput.ReadToEndAsync();
             await process.WaitForExitAsync();
@@ -41,9 +42,11 @@ public static class NvidiaGpuSensor {
             string[] parts = output.Split(',', StringSplitOptions.TrimEntries);
             double? temperature = parts.Length > 0 && double.TryParse(parts[0], out double t) ? t : null;
             double? utilization = parts.Length > 1 && double.TryParse(parts[1], out double u) ? u : null;
-            return (temperature, utilization);
+            double? powerDraw = parts.Length > 2 && double.TryParse(parts[2], out double p) ? p : null;
+            double? clockMhz = parts.Length > 3 && double.TryParse(parts[3], out double c) ? c : null;
+            return (temperature, utilization, powerDraw, clockMhz);
         } catch {
-            return (null, null);
+            return (null, null, null, null);
         }
     }
 }

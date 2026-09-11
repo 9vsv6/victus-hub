@@ -14,13 +14,21 @@ public sealed class GameProfile {
 public sealed class AppSettings {
 
     public bool DarkTheme { get; set; }
+    public bool AlwaysOnTop { get; set; }
     public bool AutoPowerSwitch { get; set; }
     public string PerformanceMode { get; set; } = "Balanced";
     public bool StartWithWindows { get; set; }
     public bool TempAlertsEnabled { get; set; }
     public double TempAlertThreshold { get; set; } = 85;
     public bool AutoFanByTemp { get; set; }
+    public bool ExitOnClose { get; set; }
+    public DateTime? LastUpdateCheckUtc { get; set; }
     public int PerformanceRefreshRateHz { get; set; }
+    public string LastTab { get; set; } = "Performance";
+    public double WindowLeft { get; set; }
+    public double WindowTop { get; set; }
+    public double WindowWidth { get; set; }
+    public double WindowHeight { get; set; }
     public List<GameProfile> GameProfiles { get; set; } = new();
 
     private static readonly string FilePath = Path.Combine(

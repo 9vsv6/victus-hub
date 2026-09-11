@@ -22,6 +22,18 @@ public static class WindowsPowerPlan {
             _ => BalancedGuid
         };
         RunPowercfg($"/setactive {guid}");
+
+        if (mode == HpFanMode.Cool) {
+            // Windows 11's "Energy saver" quick-settings toggle is a separate feature from the
+            // classic power plan above — it only engages automatically below a battery-percentage
+            // threshold (20% by default), and there's no supported API to force it on directly.
+            // Setting that threshold to 100% on the Power saver scheme (now active) makes it kick
+            // in immediately whenever Cool mode is running on battery. It only affects Power saver's
+            // own stored threshold, so switching to another mode activates a different scheme with
+            // its own untouched value — nothing needs to be restored. It has no effect on AC power,
+            // since Energy Saver itself is battery-only.
+            RunPowercfg("/setdcvalueindex SCHEME_CURRENT SUB_ENERGYSAVER ESBATTTHRESHOLD 100");
+        }
     }
 
     private static void RunPowercfg(string arguments) {
