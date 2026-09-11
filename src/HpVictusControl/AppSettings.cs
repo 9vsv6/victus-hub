@@ -3,12 +3,25 @@ using System.Text.Json;
 
 namespace HpVictusControl;
 
+/// <summary>One tracked game: which performance mode to switch to while it's running.</summary>
+public sealed class GameProfile {
+    public string Name { get; set; } = "";
+    public string ExecutablePath { get; set; } = "";
+    public string Mode { get; set; } = "Performance";
+}
+
 /// <summary>Small local settings file so the app remembers user preferences across restarts.</summary>
 public sealed class AppSettings {
 
     public bool DarkTheme { get; set; }
     public bool AutoPowerSwitch { get; set; }
     public string PerformanceMode { get; set; } = "Balanced";
+    public bool StartWithWindows { get; set; }
+    public bool TempAlertsEnabled { get; set; }
+    public double TempAlertThreshold { get; set; } = 85;
+    public bool AutoFanByTemp { get; set; }
+    public int PerformanceRefreshRateHz { get; set; }
+    public List<GameProfile> GameProfiles { get; set; } = new();
 
     private static readonly string FilePath = Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "HP Victus Control", "settings.json");

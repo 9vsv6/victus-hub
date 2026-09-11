@@ -268,6 +268,8 @@
             <RowDefinition Height="Auto"/>
             <RowDefinition Height="Auto"/>
             <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
         </Grid.RowDefinitions>
 
         <!-- Support / status banner -->
@@ -346,6 +348,11 @@
                           Margin="0,14,0,0" Checked="AutoPowerCheckBox_Changed" Unchecked="AutoPowerCheckBox_Changed"/>
                 <TextBlock Text="Performance when plugged in, Cool on battery" FontSize="11"
                            Foreground="{DynamicResource TextSecondaryBrush}" Margin="26,3,0,0"/>
+
+                <TextBlock x:Name="RefreshRateLabel" Text="Performance mode refresh rate" Style="{StaticResource FieldLabel}" Margin="0,14,0,8"/>
+                <Border x:Name="RefreshRateTrack" Background="{DynamicResource TrackBrush}" CornerRadius="9" HorizontalAlignment="Left">
+                    <StackPanel x:Name="RefreshRateOptionsPanel" Orientation="Horizontal"/>
+                </Border>
             </StackPanel>
         </Border>
 
@@ -400,6 +407,13 @@
 
                 <Border Height="1" Background="{DynamicResource BorderBrush2}" Margin="0,16,0,16"/>
 
+                <CheckBox x:Name="AutoFanCheckBox" Content="Auto fan by temperature" Style="{StaticResource ModernCheckBox}"
+                          Checked="AutoFanCheckBox_Changed" Unchecked="AutoFanCheckBox_Changed"/>
+                <TextBlock Text="Ramps CPU/GPU fan speed with their own temperature instead of the BIOS's built-in curve"
+                           FontSize="11" Foreground="{DynamicResource TextSecondaryBrush}" Margin="26,3,0,0" TextWrapping="Wrap"/>
+
+                <Border Height="1" Background="{DynamicResource BorderBrush2}" Margin="0,16,0,16"/>
+
                 <CheckBox x:Name="MaxFanCheckBox" Content="Force max fan speed" Style="{StaticResource ModernCheckBox}"
                           Checked="MaxFanCheckBox_Changed" Unchecked="MaxFanCheckBox_Changed"/>
             </StackPanel>
@@ -450,7 +464,65 @@
             </StackPanel>
         </Border>
 
-        <TextBlock Grid.Row="5" x:Name="FooterText" HorizontalAlignment="Center" Margin="0,16,0,0"
+        <!-- Alerts & startup -->
+        <Border Grid.Row="5" Style="{StaticResource Card}">
+            <StackPanel>
+                <TextBlock Text="Alerts &amp; startup" Style="{StaticResource SectionHeader}"/>
+
+                <CheckBox x:Name="StartWithWindowsCheckBox" Content="Start with Windows (minimized to tray)"
+                          Style="{StaticResource ModernCheckBox}"
+                          Checked="StartWithWindowsCheckBox_Changed" Unchecked="StartWithWindowsCheckBox_Changed"/>
+
+                <Border Height="1" Background="{DynamicResource BorderBrush2}" Margin="0,14,0,14"/>
+
+                <CheckBox x:Name="TempAlertCheckBox" Content="Notify when CPU or GPU gets too hot"
+                          Style="{StaticResource ModernCheckBox}"
+                          Checked="TempAlertCheckBox_Changed" Unchecked="TempAlertCheckBox_Changed"/>
+
+                <Grid Margin="0,14,0,0" IsEnabled="{Binding ElementName=TempAlertCheckBox, Path=IsChecked}">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="70"/>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="50"/>
+                    </Grid.ColumnDefinitions>
+                    <TextBlock Grid.Column="0" Text="Threshold" Style="{StaticResource FieldLabel}"/>
+                    <Slider x:Name="TempAlertSlider" Grid.Column="1" Minimum="60" Maximum="100"
+                            Margin="10,0" Style="{StaticResource ModernSlider}" ValueChanged="TempAlertSlider_ValueChanged"/>
+                    <TextBlock x:Name="TempAlertSliderText" Grid.Column="2" Text="85°C" Style="{StaticResource FieldValue}"/>
+                </Grid>
+            </StackPanel>
+        </Border>
+
+        <!-- Per-game profiles -->
+        <Border Grid.Row="6" Style="{StaticResource Card}">
+            <StackPanel>
+                <TextBlock Text="Per-game profiles" Style="{StaticResource SectionHeader}"/>
+                <TextBlock TextWrapping="Wrap" FontSize="11" Margin="0,0,0,10"
+                           Foreground="{DynamicResource TextSecondaryBrush}"
+                           Text="Automatically switches performance mode while a tracked game is running, then reverts when it closes."/>
+
+                <StackPanel x:Name="GameProfilesListPanel"/>
+                <TextBlock x:Name="NoGameProfilesText" Text="No games tracked yet." FontSize="12"
+                           Foreground="{DynamicResource TextSecondaryBrush}" Margin="0,0,0,10"/>
+
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="Auto"/>
+                    </Grid.ColumnDefinitions>
+                    <Button Grid.Column="0" Content="Scan for installed games" Style="{StaticResource PrimaryButton}"
+                            Margin="0,0,8,0" Click="ScanForGamesButton_Click"/>
+                    <Button x:Name="BrowseForGameButton" Grid.Column="1" Content="Browse..." Style="{StaticResource SecondaryButton}"
+                            Padding="14,10" Click="BrowseForGameButton_Click"/>
+                </Grid>
+
+                <TextBlock x:Name="GameScanStatusText" TextWrapping="Wrap" FontSize="11" Margin="0,10,0,0"
+                           Foreground="{DynamicResource TextSecondaryBrush}" Visibility="Collapsed"/>
+                <StackPanel x:Name="DetectedGamesListPanel" Margin="0,4,0,0"/>
+            </StackPanel>
+        </Border>
+
+        <TextBlock Grid.Row="7" x:Name="FooterText" HorizontalAlignment="Center" Margin="0,16,0,0"
                    Foreground="{DynamicResource TextSecondaryBrush}" FontSize="11"
                    Text="Closing this window minimizes to the tray. Use the tray icon to exit."/>
     </Grid>

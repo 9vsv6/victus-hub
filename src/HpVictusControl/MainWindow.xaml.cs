@@ -5,11 +5,13 @@ using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Threading;
 using HpVictusControl.Bios;
+using HpVictusControl.Games;
 using HpVictusControl.Updates;
 using Border = System.Windows.Controls.Border;
 using Brush = System.Windows.Media.Brush;
 using Button = System.Windows.Controls.Button;
 using CheckBox = System.Windows.Controls.CheckBox;
+using RadioButton = System.Windows.Controls.RadioButton;
 using Color = System.Windows.Media.Color;
 using MessageBox = System.Windows.MessageBox;
 using Orientation = System.Windows.Controls.Orientation;
@@ -34,13 +36,24 @@ public partial class MainWindow : Window {
 
         ApplyTheme(_settings.DarkTheme);
         DarkThemeCheckBox.IsChecked = _settings.DarkTheme;
+        TempAlertCheckBox.IsChecked = _settings.TempAlertsEnabled;
+        TempAlertSlider.Value = _settings.TempAlertThreshold;
 
-        _tray.ShowRequested += () => Dispatcher.Invoke(() => { Show(); WindowState = WindowState.Normal; Activate(); });
+        _tray.ShowRequested += () => Dispatcher.Invoke(() => {
+            ShowInTaskbar = true;
+            Show();
+            WindowState = WindowState.Normal;
+            Activate();
+        });
         _tray.ExitRequested += () => Dispatcher.Invoke(ExitApplication);
         _tray.MaxFanToggleRequested += enabled => Dispatcher.Invoke(() => MaxFanCheckBox.IsChecked = enabled);
         _tray.FanModeRequested += mode => Dispatcher.Invoke(() => SetActiveModeRadio(mode));
 
         _pollTimer.Tick += (_, _) => RefreshStats();
+
+        // Nothing's watching the live stats while hidden in the tray, so poll far less often —
+        // temperature alerts and game-profile switching still run, just less frequently.
+        IsVisibleChanged += (_, e) => _pollTimer.Interval = TimeSpan.FromSeconds((bool)e.NewValue ? 2 : 15);
 
         Microsoft.Win32.SystemEvents.PowerModeChanged += SystemEvents_PowerModeChanged;
 
@@ -55,6 +68,58 @@ public partial class MainWindow : Window {
         if (_initializing) return;
         _settings.DarkTheme = dark;
         _settings.Save();
+    }
+
+    private void StartWithWindowsCheckBox_Changed(object sender, RoutedEventArgs e) {
+        bool enabled = StartWithWindowsCheckBox.IsChecked == true;
+
+        if (!_initializing) {
+            try {
+                StartupManager.SetEnabled(enabled);
+            } catch (Exception ex) {
+                MessageBox.Show(this, $"Couldn't update startup setting: {ex.Message}", "HP Victus Control", MessageBoxButton.OK, MessageBoxImage.Warning);
+                StartWithWindowsCheckBox.IsChecked = !enabled;
+                return;
+            }
+        }
+
+        _settings.StartWithWindows = enabled;
+        _settings.Save();
+    }
+
+    private void TempAlertCheckBox_Changed(object sender, RoutedEventArgs e) {
+        if (_initializing) return;
+        _settings.TempAlertsEnabled = TempAlertCheckBox.IsChecked == true;
+        _settings.Save();
+    }
+
+    private void TempAlertSlider_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e) {
+        // Value gets coerced into [60,100] as soon as XAML sets Minimum/Maximum on this
+        // slider (default Value 0 is out of range), firing this before InitializeComponent
+        // has finished wiring up later-declared sibling elements.
+        if (TempAlertSliderText == null) return;
+
+        TempAlertSliderText.Text = $"{(int)TempAlertSlider.Value}°C";
+        if (_initializing) return;
+        _settings.TempAlertThreshold = TempAlertSlider.Value;
+        _settings.Save();
+    }
+
+    // Fires once when a reading crosses the threshold, then waits for it to drop 5° below
+    // before it can fire again — avoids re-notifying every 2-second poll tick while it's hot.
+    private bool _cpuTempAlertActive;
+    private bool _gpuTempAlertActive;
+
+    private void CheckTemperatureAlert(string label, double? celsius, ref bool alertActive) {
+        if (TempAlertCheckBox.IsChecked != true || !celsius.HasValue) return;
+
+        double threshold = _settings.TempAlertThreshold;
+        if (!alertActive && celsius.Value >= threshold) {
+            alertActive = true;
+            _tray.ShowWarningBalloon("HP Victus Control", $"{label} temperature is high: {celsius.Value:0.#}°C");
+        } else if (alertActive && celsius.Value <= threshold - 5) {
+            alertActive = false;
+        }
     }
 
     private void ApplyTheme(bool dark) {
@@ -101,13 +166,19 @@ public partial class MainWindow : Window {
             GpuUsagePanel.ToolTip = null;
         }
 
+        RenderGameProfilesList();
+        PopulateRefreshRateOptions();
+
         RefreshStats();
         _pollTimer.Start();
         _initializing = false;
 
-        // Applying this after _initializing is cleared so it goes through the normal
-        // handler — disabling the mode radios and applying the current power source.
+        // Applying these after _initializing is cleared so they go through the normal
+        // handlers — disabling the mode radios/applying the current power source, and
+        // (re)asserting the scheduled task in case it was deleted outside the app.
         if (_settings.AutoPowerSwitch) AutoPowerCheckBox.IsChecked = true;
+        if (_settings.StartWithWindows) StartWithWindowsCheckBox.IsChecked = true;
+        if (_settings.AutoFanByTemp) AutoFanCheckBox.IsChecked = true;
     }
 
     private void RefreshStats() {
@@ -124,19 +195,28 @@ public partial class MainWindow : Window {
         // Temperature and fan levels are read independently so a failure in one
         // doesn't block the other from updating.
         string tempText = "N/A";
+        double? cpuTempValue = null;
         try {
             byte biosTemp = _bios.GetTemperature();
             if (biosTemp > 0) {
                 // Some BIOS/model combinations report success but leave this sensor
                 // unpopulated (always 0) — fall back to Windows' own ACPI thermal zone.
                 tempText = $"{biosTemp}°C";
+                cpuTempValue = biosTemp;
             } else if (AcpiThermalSensor.TryRead(out double acpiTemp)) {
                 tempText = $"{acpiTemp:0.#}°C";
+                cpuTempValue = acpiTemp;
             }
         } catch (HpBiosException) {
-            if (AcpiThermalSensor.TryRead(out double acpiTemp)) tempText = $"{acpiTemp:0.#}°C";
+            if (AcpiThermalSensor.TryRead(out double acpiTemp)) {
+                tempText = $"{acpiTemp:0.#}°C";
+                cpuTempValue = acpiTemp;
+            }
         }
         TemperatureText.Text = tempText;
+        CheckTemperatureAlert("CPU", cpuTempValue, ref _cpuTempAlertActive);
+        _lastCpuTempForFan = cpuTempValue;
+        ApplyAutoFanCurve();
 
         try {
             (byte cpu, byte gpu) = _bios.GetFanLevels();
@@ -147,6 +227,8 @@ public partial class MainWindow : Window {
         } catch (HpBiosException) {
             // Skip this tick; the BIOS occasionally returns a transient error under load.
         }
+
+        CheckGameProfiles();
     }
 
     // nvidia-smi is a subprocess call, so this runs off the poll tick instead of blocking it.
@@ -161,6 +243,9 @@ public partial class MainWindow : Window {
 
         GpuTempText.Text = temperature.HasValue ? $"{temperature.Value:0.#}°C" : "N/A";
         GpuUsageText.Text = utilization.HasValue ? $"{utilization.Value:0}%" : "N/A";
+        CheckTemperatureAlert("GPU", temperature, ref _gpuTempAlertActive);
+        _lastGpuTempForFan = temperature;
+        ApplyAutoFanCurve();
     }
 
     // ----- Performance mode ------------------------------------------------------------
@@ -177,6 +262,7 @@ public partial class MainWindow : Window {
     }
 
     private void ApplyMode(HpFanMode mode) {
+        HpFanMode previousMode = _currentMode;
         try {
             _bios.SetFanMode(mode);
             _currentMode = mode;
@@ -184,9 +270,98 @@ public partial class MainWindow : Window {
 
             _settings.PerformanceMode = mode.ToString();
             _settings.Save();
+
+            ApplyRefreshRateForMode(mode);
+            WindowsPowerPlan.SetForMode(mode);
+            ApplyBrightnessForMode(mode, previousMode);
         } catch (HpBiosException ex) {
             MessageBox.Show(this, ex.Message, "HP Victus Control", MessageBoxButton.OK, MessageBoxImage.Warning);
         }
+    }
+
+    // Cool mode dims the panel a bit to save power; leaving Cool restores whatever brightness
+    // was set before — this never touches brightness for Balanced/Performance on their own,
+    // since that's a personal preference the app shouldn't override.
+    private byte? _brightnessBeforeCool;
+
+    private void ApplyBrightnessForMode(HpFanMode mode, HpFanMode previousMode) {
+        try {
+            if (mode == HpFanMode.Cool && previousMode != HpFanMode.Cool) {
+                if (ScreenBrightness.TryGetBrightness(out byte current)) {
+                    _brightnessBeforeCool = current;
+                    byte dimmed = (byte)Math.Min((int)current, 40);
+                    _ = SetBrightnessAfterPowerPlanSettlesAsync(dimmed);
+                }
+            } else if (mode != HpFanMode.Cool && _brightnessBeforeCool.HasValue) {
+                byte restore = _brightnessBeforeCool.Value;
+                _brightnessBeforeCool = null;
+                _ = SetBrightnessAfterPowerPlanSettlesAsync(restore);
+            }
+        } catch {
+            // Best-effort — not every panel supports WMI brightness control.
+        }
+    }
+
+    // Windows applies each power scheme's own stored brightness (e.g. this machine's "Power
+    // saver" scheme is stored at 75% while "Balanced" is at 10%) as part of activating it, with
+    // a brief fade — racing an explicit brightness call right after WindowsPowerPlan.SetForMode
+    // can get overridden by that fade mid-flight. Waiting it out first makes this call the one
+    // that actually sticks.
+    private static async Task SetBrightnessAfterPowerPlanSettlesAsync(byte percent) {
+        await Task.Delay(500);
+        ScreenBrightness.SetBrightness(percent);
+    }
+
+    // Performance mode bumps the panel to its highest refresh rate; Balanced/Cool drop it back
+    // to 60Hz to save power, mirroring how OEM gaming-hub apps pair refresh rate with profile.
+    private void ApplyRefreshRateForMode(HpFanMode mode) {
+        try {
+            if (mode == HpFanMode.Performance) {
+                int rate = _settings.PerformanceRefreshRateHz > 0
+                    ? _settings.PerformanceRefreshRateHz
+                    : DisplayRefreshRate.GetMaxRefreshRate() ?? 60;
+                DisplayRefreshRate.SetRefreshRate(rate);
+            } else {
+                DisplayRefreshRate.SetRefreshRate(60);
+            }
+        } catch {
+            // Best-effort — not every display/driver combination supports this cleanly.
+        }
+    }
+
+    private void PopulateRefreshRateOptions() {
+        List<int> rates = DisplayRefreshRate.GetSupportedRefreshRates();
+        RefreshRateOptionsPanel.Children.Clear();
+
+        if (rates.Count <= 1) {
+            RefreshRateLabel.Visibility = Visibility.Collapsed;
+            RefreshRateTrack.Visibility = Visibility.Collapsed;
+            return;
+        }
+
+        int target = _settings.PerformanceRefreshRateHz > 0 && rates.Contains(_settings.PerformanceRefreshRateHz)
+            ? _settings.PerformanceRefreshRateHz
+            : rates[^1];
+
+        foreach (int rate in rates) {
+            var radio = new RadioButton {
+                Content = $"{rate}Hz", GroupName = "RefreshRateOption", Style = (Style)FindResource("SegmentRadio"),
+                Tag = rate
+            };
+            radio.Checked += RefreshRateOption_Checked;
+            RefreshRateOptionsPanel.Children.Add(radio);
+            if (rate == target) radio.IsChecked = true;
+        }
+    }
+
+    private void RefreshRateOption_Checked(object sender, RoutedEventArgs e) {
+        if (_initializing) return;
+
+        int rate = (int)((RadioButton)sender).Tag;
+        _settings.PerformanceRefreshRateHz = rate;
+        _settings.Save();
+
+        if (_currentMode == HpFanMode.Performance) DisplayRefreshRate.SetRefreshRate(rate);
     }
 
     // Sets which radio button is shown as active. Note the BIOS interface only exposes a way
@@ -240,6 +415,8 @@ public partial class MainWindow : Window {
         bool manual = ManualCheckBox.IsChecked == true;
         ApplyFanButton.IsEnabled = manual;
 
+        if (manual && AutoFanCheckBox.IsChecked == true) AutoFanCheckBox.IsChecked = false;
+
         if (!manual) {
             try {
                 _bios.ReleaseManualFanControl();
@@ -266,11 +443,71 @@ public partial class MainWindow : Window {
         if (_initializing) return;
 
         bool enabled = MaxFanCheckBox.IsChecked == true;
+        if (enabled && AutoFanCheckBox.IsChecked == true) AutoFanCheckBox.IsChecked = false;
+
         try {
             _bios.SetMaxFanSpeed(enabled);
             _tray.SetMaxFanChecked(enabled);
         } catch (HpBiosException ex) {
             MessageBox.Show(this, ex.Message, "HP Victus Control", MessageBoxButton.OK, MessageBoxImage.Warning);
+        }
+    }
+
+    // ----- Auto fan by temperature ----------------------------------------------------------
+
+    private double? _lastCpuTempForFan;
+    private double? _lastGpuTempForFan;
+    private byte? _lastAutoCpuFanLevel;
+    private byte? _lastAutoGpuFanLevel;
+
+    private void AutoFanCheckBox_Changed(object sender, RoutedEventArgs e) {
+        if (_initializing) return;
+
+        bool auto = AutoFanCheckBox.IsChecked == true;
+        _settings.AutoFanByTemp = auto;
+        _settings.Save();
+
+        if (auto) {
+            if (ManualCheckBox.IsChecked == true) ManualCheckBox.IsChecked = false;
+            if (MaxFanCheckBox.IsChecked == true) {
+                MaxFanCheckBox.IsChecked = false;
+            } else {
+                // Force max's own handler already releases control when it's the one turning
+                // off; otherwise hand control back to the BIOS curve before we start driving it.
+                try { _bios.ReleaseManualFanControl(); } catch (HpBiosException) { }
+            }
+            _lastAutoCpuFanLevel = null;
+            _lastAutoGpuFanLevel = null;
+        } else {
+            try { _bios.ReleaseManualFanControl(); } catch (HpBiosException) { }
+        }
+    }
+
+    // Simple staged curve: quieter at low temps, ramping up toward max as things get hot.
+    // Applied independently per fan based on that fan's own component temperature.
+    private static byte FanLevelForTemperature(double celsius) => celsius switch {
+        < 45 => (byte)10,
+        < 55 => (byte)18,
+        < 65 => (byte)27,
+        < 75 => (byte)37,
+        < 85 => (byte)48,
+        _ => (byte)60
+    };
+
+    private void ApplyAutoFanCurve() {
+        if (AutoFanCheckBox.IsChecked != true) return;
+
+        byte cpuLevel = _lastCpuTempForFan.HasValue ? FanLevelForTemperature(_lastCpuTempForFan.Value) : (byte)27;
+        byte gpuLevel = _lastGpuTempForFan.HasValue ? FanLevelForTemperature(_lastGpuTempForFan.Value) : cpuLevel;
+
+        if (_lastAutoCpuFanLevel == cpuLevel && _lastAutoGpuFanLevel == gpuLevel) return;
+
+        try {
+            _bios.SetFanLevels(cpuLevel, gpuLevel);
+            _lastAutoCpuFanLevel = cpuLevel;
+            _lastAutoGpuFanLevel = gpuLevel;
+        } catch (HpBiosException) {
+            // Skip this tick; the next poll will retry.
         }
     }
 
@@ -561,6 +798,154 @@ public partial class MainWindow : Window {
                     "HP Victus Control", MessageBoxButton.OK, MessageBoxImage.Warning);
             }
         }
+    }
+
+    // ----- Per-game profiles ----------------------------------------------------------------
+
+    // At most one tracked game "owns" the current mode at a time; when it exits, the mode from
+    // just before it launched is restored.
+    private string? _activeGameProfileExeName;
+    private HpFanMode _preGameMode;
+
+    private void CheckGameProfiles() {
+        if (_settings.GameProfiles.Count == 0) return;
+
+        if (_activeGameProfileExeName != null) {
+            bool stillRunning = Process.GetProcessesByName(_activeGameProfileExeName).Length > 0;
+            if (!stillRunning) {
+                ApplyMode(_preGameMode);
+                _activeGameProfileExeName = null;
+            } else {
+                return;
+            }
+        }
+
+        foreach (GameProfile profile in _settings.GameProfiles) {
+            string exeName = Path.GetFileNameWithoutExtension(profile.ExecutablePath);
+            if (exeName.Length == 0 || Process.GetProcessesByName(exeName).Length == 0) continue;
+            if (!Enum.TryParse(profile.Mode, out HpFanMode gameMode)) continue;
+
+            _preGameMode = _currentMode;
+            ApplyMode(gameMode);
+            _activeGameProfileExeName = exeName;
+            break;
+        }
+    }
+
+    private void RenderGameProfilesList() {
+        GameProfilesListPanel.Children.Clear();
+        NoGameProfilesText.Visibility = _settings.GameProfiles.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
+
+        foreach (GameProfile profile in _settings.GameProfiles) {
+            var row = new Grid { Margin = new Thickness(0, 6, 0, 6) };
+            row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+            row.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+
+            var info = new StackPanel();
+            info.Children.Add(new TextBlock {
+                Text = profile.Name, FontWeight = FontWeights.SemiBold, FontSize = 12, TextWrapping = TextWrapping.Wrap,
+                Foreground = (Brush)FindResource("TextPrimaryBrush")
+            });
+            info.Children.Add(new TextBlock {
+                Text = $"{profile.Mode} mode", FontSize = 11, Margin = new Thickness(0, 2, 0, 0),
+                Foreground = (Brush)FindResource("TextSecondaryBrush")
+            });
+            Grid.SetColumn(info, 0);
+            row.Children.Add(info);
+
+            var removeButton = new Button {
+                Content = "Remove", Style = (Style)FindResource("SecondaryButton"),
+                Padding = new Thickness(12, 6, 12, 6)
+            };
+            removeButton.Click += (_, _) => {
+                _settings.GameProfiles.Remove(profile);
+                _settings.Save();
+                RenderGameProfilesList();
+            };
+            Grid.SetColumn(removeButton, 1);
+            row.Children.Add(removeButton);
+
+            GameProfilesListPanel.Children.Add(row);
+        }
+    }
+
+    private async void ScanForGamesButton_Click(object sender, RoutedEventArgs e) {
+        var button = (Button)sender;
+        button.IsEnabled = false;
+        DetectedGamesListPanel.Children.Clear();
+        GameScanStatusText.Visibility = Visibility.Visible;
+        GameScanStatusText.Text = "Scanning Steam and Epic Games libraries...";
+
+        try {
+            List<DetectedGame> detected = await Task.Run(GameDetector.DetectInstalledGames);
+            List<DetectedGame> newOnes = detected
+                .Where(d => !_settings.GameProfiles.Any(p => string.Equals(p.ExecutablePath, d.ExecutablePath, StringComparison.OrdinalIgnoreCase)))
+                .ToList();
+
+            if (detected.Count == 0) {
+                GameScanStatusText.Text = "No installed Steam or Epic games found.";
+            } else if (newOnes.Count == 0) {
+                GameScanStatusText.Text = $"Found {detected.Count} game(s) — all already tracked.";
+            } else {
+                GameScanStatusText.Text = $"Found {newOnes.Count} game(s) not yet tracked:";
+                foreach (DetectedGame game in newOnes) AddDetectedGameRow(game);
+            }
+        } catch (Exception ex) {
+            GameScanStatusText.Text = $"Scan failed: {ex.Message}";
+        } finally {
+            button.IsEnabled = true;
+        }
+    }
+
+    private void AddDetectedGameRow(DetectedGame game) {
+        var row = new Grid { Margin = new Thickness(0, 6, 0, 6) };
+        row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+        row.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+
+        var info = new StackPanel();
+        info.Children.Add(new TextBlock {
+            Text = game.Name, FontWeight = FontWeights.SemiBold, FontSize = 12, TextWrapping = TextWrapping.Wrap,
+            Foreground = (Brush)FindResource("TextPrimaryBrush")
+        });
+        info.Children.Add(new TextBlock {
+            Text = game.ExecutablePath, FontSize = 10, Margin = new Thickness(0, 2, 0, 0), TextWrapping = TextWrapping.Wrap,
+            Foreground = (Brush)FindResource("TextSecondaryBrush")
+        });
+        Grid.SetColumn(info, 0);
+        row.Children.Add(info);
+
+        var addButton = new Button {
+            Content = "Add as Performance", Style = (Style)FindResource("PrimaryButton"),
+            Padding = new Thickness(12, 6, 12, 6)
+        };
+        addButton.Click += (_, _) => {
+            AddGameProfile(game.Name, game.ExecutablePath, HpFanMode.Performance);
+            DetectedGamesListPanel.Children.Remove(row);
+        };
+        Grid.SetColumn(addButton, 1);
+        row.Children.Add(addButton);
+
+        DetectedGamesListPanel.Children.Add(row);
+    }
+
+    private void BrowseForGameButton_Click(object sender, RoutedEventArgs e) {
+        var dialog = new Microsoft.Win32.OpenFileDialog {
+            Title = "Select a game executable",
+            Filter = "Applications (*.exe)|*.exe"
+        };
+        if (dialog.ShowDialog(this) != true) return;
+
+        string name = Path.GetFileNameWithoutExtension(dialog.FileName);
+        AddGameProfile(name, dialog.FileName, HpFanMode.Performance);
+    }
+
+    private void AddGameProfile(string name, string executablePath, HpFanMode mode) {
+        if (_settings.GameProfiles.Any(p => string.Equals(p.ExecutablePath, executablePath, StringComparison.OrdinalIgnoreCase)))
+            return;
+
+        _settings.GameProfiles.Add(new GameProfile { Name = name, ExecutablePath = executablePath, Mode = mode.ToString() });
+        _settings.Save();
+        RenderGameProfilesList();
     }
 
     // ----- Window / tray lifecycle --------------------------------------------------------

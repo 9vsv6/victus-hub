@@ -11,13 +11,14 @@
     <ApplicationManifest>app.manifest</ApplicationManifest>
     <AssemblyName>HpVictusControl</AssemblyName>
     <RootNamespace>HpVictusControl</RootNamespace>
-    <ApplicationIcon />
+    <ApplicationIcon>app.ico</ApplicationIcon>
     <InvariantGlobalization>true</InvariantGlobalization>
     <ApplicationHighDpiMode>PerMonitorV2</ApplicationHighDpiMode>
   </PropertyGroup>
 
   <ItemGroup>
     <PackageReference Include="System.Management" Version="9.0.0" />
+    <PackageReference Include="System.Diagnostics.PerformanceCounter" Version="9.0.0" />
   </ItemGroup>
 
 </Project>

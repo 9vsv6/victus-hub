@@ -46,12 +46,25 @@ public sealed class TrayService : IDisposable {
         menu.Items.Add(exitItem);
 
         _icon = new NotifyIcon {
-            Icon = SystemIcons.Application,
+            Icon = LoadAppIcon(),
             Text = "HP Victus Control",
             Visible = true,
             ContextMenuStrip = menu,
         };
         _icon.DoubleClick += (_, _) => ShowRequested?.Invoke();
+    }
+
+    private static Icon LoadAppIcon() {
+        try {
+            string? exePath = Environment.ProcessPath;
+            if (!string.IsNullOrEmpty(exePath)) {
+                Icon? extracted = Icon.ExtractAssociatedIcon(exePath);
+                if (extracted != null) return extracted;
+            }
+        } catch {
+            // Fall back below.
+        }
+        return SystemIcons.Application;
     }
 
     public void SetMaxFanChecked(bool value) => _maxFanItem.Checked = value;
@@ -69,6 +82,9 @@ public sealed class TrayService : IDisposable {
 
     public void ShowBalloon(string title, string text) =>
         _icon.ShowBalloonTip(3000, title, text, ToolTipIcon.Info);
+
+    public void ShowWarningBalloon(string title, string text) =>
+        _icon.ShowBalloonTip(6000, title, text, ToolTipIcon.Warning);
 
     public void Dispose() {
         _icon.Visible = false;
