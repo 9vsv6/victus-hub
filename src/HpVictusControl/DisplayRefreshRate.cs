@@ -4,8 +4,8 @@ namespace HpVictusControl;
 
 /// <summary>
 /// Reads and sets the primary display's refresh rate via the Win32 display settings API —
-/// the same mechanism Windows' own Display Settings page uses. Used to bump the panel to its
-/// highest supported refresh rate in Performance mode, and back down for Balanced/Cool.
+/// the same mechanism Windows' own Display Settings page uses. Used to apply the refresh rate
+/// chosen for each performance mode.
 /// </summary>
 public static class DisplayRefreshRate {
 

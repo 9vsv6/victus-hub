@@ -41,7 +41,7 @@ public static class GameDetector {
                 string launchExe = root.TryGetProperty("LaunchExecutable", out JsonElement le) ? le.GetString() ?? "" : "";
                 if (name.Length == 0 || installLocation.Length == 0 || launchExe.Length == 0) continue;
 
-                string fullPath = Path.Combine(installLocation, launchExe);
+                string fullPath = PathNormalizer.Normalize(Path.Combine(installLocation, launchExe));
                 if (File.Exists(fullPath)) results.Add(new DetectedGame(name, fullPath));
             } catch {
                 // Skip a malformed/unreadable manifest.
@@ -52,7 +52,14 @@ public static class GameDetector {
 
     private static readonly string[] NonGameExeHints = {
         "unins", "setup", "redist", "vcredist", "directx", "crashreport", "crashpad",
-        "battleye", "easyanticheat", "eossdk", "vc_redist", "dxsetup", "helper", "service", "updater"
+        "battleye", "easyanticheat", "eossdk", "vc_redist", "dxsetup", "helper", "service", "updater",
+        "launcher"
+    };
+
+    // Bundled installers (e.g. GTA V's Redistributables\Rockstar-Games-Launcher.exe) are often
+    // bigger than the game itself, so exes under these folders are never picked.
+    private static readonly string[] NonGameFolderHints = {
+        "redist", "installer", "prerequisite", "directx", "easyanticheat", "battleye"
     };
 
     private static List<DetectedGame> DetectSteamGames() {
@@ -60,15 +67,18 @@ public static class GameDetector {
         string? steamPath = GetSteamInstallPath();
         if (steamPath == null || !Directory.Exists(steamPath)) return results;
 
-        var libraryFolders = new List<string> { steamPath };
+        var libraryFolders = new List<string>();
         string vdfPath = Path.Combine(steamPath, "steamapps", "libraryfolders.vdf");
         if (File.Exists(vdfPath)) {
             string content = File.ReadAllText(vdfPath);
             foreach (Match m in Regex.Matches(content, "\"path\"\\s*\"([^\"]+)\"")) {
                 string path = m.Groups[1].Value.Replace("\\\\", "\\");
-                if (Directory.Exists(path)) libraryFolders.Add(path);
+                if (Directory.Exists(path)) libraryFolders.Add(PathNormalizer.Normalize(path));
             }
         }
+        // Steam stores its own path as "c:/program files (x86)/steam". Normalized and added last, it
+        // dedupes against the same folder from libraryfolders.vdf instead of being scanned twice.
+        libraryFolders.Add(PathNormalizer.Normalize(steamPath));
 
         foreach (string library in libraryFolders.Distinct(StringComparer.OrdinalIgnoreCase)) {
             string steamappsDir = Path.Combine(library, "steamapps");
@@ -85,7 +95,7 @@ public static class GameDetector {
                     if (!Directory.Exists(gameDir)) continue;
 
                     string? exePath = Directory.GetFiles(gameDir, "*.exe", SearchOption.AllDirectories)
-                        .Where(f => !LooksLikeUtilityExe(f))
+                        .Where(f => !LooksLikeUtilityExe(f, gameDir))
                         .OrderByDescending(f => new FileInfo(f).Length)
                         .FirstOrDefault();
 
@@ -98,9 +108,12 @@ public static class GameDetector {
         return results;
     }
 
-    private static bool LooksLikeUtilityExe(string path) {
+    private static bool LooksLikeUtilityExe(string path, string gameDir) {
         string name = Path.GetFileNameWithoutExtension(path).ToLowerInvariant();
-        return NonGameExeHints.Any(hint => name.Contains(hint));
+        if (NonGameExeHints.Any(hint => name.Contains(hint))) return true;
+
+        string folder = (Path.GetDirectoryName(Path.GetRelativePath(gameDir, path)) ?? "").ToLowerInvariant();
+        return NonGameFolderHints.Any(hint => folder.Contains(hint));
     }
 
     private static string? GetSteamInstallPath() {

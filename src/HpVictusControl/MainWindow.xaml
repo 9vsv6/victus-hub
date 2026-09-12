@@ -316,8 +316,8 @@
                                 <Setter TargetName="Bg" Property="Background" Value="{DynamicResource AccentHoverBrush}"/>
                             </Trigger>
                             <Trigger Property="IsEnabled" Value="False">
-                                <Setter TargetName="Bg" Property="Background" Value="#DCDFE4"/>
-                                <Setter Property="Foreground" Value="#9AA0A8"/>
+                                <Setter TargetName="Bg" Property="Background" Value="{DynamicResource TrackBrush}"/>
+                                <Setter Property="Foreground" Value="{DynamicResource TextSecondaryBrush}"/>
                             </Trigger>
                         </ControlTemplate.Triggers>
                     </ControlTemplate>
@@ -342,7 +342,7 @@
                         </Border>
                         <ControlTemplate.Triggers>
                             <Trigger Property="IsMouseOver" Value="True">
-                                <Setter TargetName="Bg" Property="Background" Value="#E4E6EB"/>
+                                <Setter TargetName="Bg" Property="Background" Value="{DynamicResource BorderBrush2}"/>
                             </Trigger>
                         </ControlTemplate.Triggers>
                     </ControlTemplate>
@@ -489,6 +489,8 @@
                                        FontSize="11" Foreground="{DynamicResource TextSecondaryBrush}"/>
                             <TextBlock x:Name="GpuDetailText" Text="" Margin="0,4,0,0"
                                        FontSize="11" Foreground="{DynamicResource TextSecondaryBrush}" Visibility="Collapsed"/>
+                            <TextBlock x:Name="RamDetailText" Text="" Margin="0,4,0,0"
+                                       FontSize="11" Foreground="{DynamicResource TextSecondaryBrush}"/>
                         </StackPanel>
                     </Border>
 
@@ -517,13 +519,42 @@
                             <TextBlock Text="Performance when plugged in, Cool on battery" FontSize="11"
                                        Foreground="{DynamicResource TextSecondaryBrush}" Margin="26,3,0,0"/>
 
-                            <TextBlock x:Name="RefreshRateLabel" Text="Performance mode refresh rate" Style="{StaticResource FieldLabel}" Margin="0,14,0,8"/>
+                            <TextBlock x:Name="RefreshRateLabel" Text="Refresh rate" Style="{StaticResource FieldLabel}" Margin="0,14,0,8"/>
                             <Border x:Name="RefreshRateTrack" Background="{DynamicResource TrackBrush}" CornerRadius="9" HorizontalAlignment="Left">
                                 <StackPanel x:Name="RefreshRateOptionsPanel" Orientation="Horizontal"/>
                             </Border>
+                            <TextBlock x:Name="RefreshRateStatusText" TextWrapping="Wrap" FontSize="11" Margin="0,6,0,0"
+                                       Foreground="{DynamicResource TextSecondaryBrush}" Visibility="Collapsed"/>
 
                             <TextBlock Text="Tip: press Ctrl+Alt+F12 anywhere to cycle performance mode" FontSize="11"
                                        Foreground="{DynamicResource TextSecondaryBrush}" Margin="0,14,0,0"/>
+                        </StackPanel>
+                    </Border>
+
+                    <!-- Games -->
+                    <Border Style="{StaticResource Card}">
+                        <StackPanel>
+                            <TextBlock Text="Games" Style="{StaticResource SectionHeader}"/>
+                            <TextBlock TextWrapping="Wrap" FontSize="11" Margin="0,0,0,12"
+                                       Foreground="{DynamicResource TextSecondaryBrush}"
+                                       Text="Pick a mode for each game. The app switches to it while the game runs and switches back when it closes."/>
+
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="Auto"/>
+                                </Grid.ColumnDefinitions>
+                                <Button Grid.Column="0" Content="Scan for games" Style="{StaticResource PrimaryButton}"
+                                        Margin="0,0,8,0" Click="ScanForGamesButton_Click"/>
+                                <Button x:Name="BrowseForGameButton" Grid.Column="1" Content="Add game..." Style="{StaticResource SecondaryButton}"
+                                        Padding="14,10" Click="BrowseForGameButton_Click"/>
+                            </Grid>
+                            <TextBlock x:Name="GameScanStatusText" TextWrapping="Wrap" FontSize="11" Margin="0,10,0,0"
+                                       Foreground="{DynamicResource TextSecondaryBrush}" Visibility="Collapsed"/>
+
+                            <TextBlock x:Name="NoGameProfilesText" Text="No games yet. Scan to find your Steam and Epic games." FontSize="12"
+                                       Foreground="{DynamicResource TextSecondaryBrush}" Margin="0,14,0,0"/>
+                            <StackPanel x:Name="GameProfilesListPanel" Margin="0,14,0,0"/>
                         </StackPanel>
                     </Border>
 
@@ -587,6 +618,38 @@
 
                             <CheckBox x:Name="MaxFanCheckBox" Content="Force max fan speed" Style="{StaticResource GlowToggle}"
                                       Checked="MaxFanCheckBox_Changed" Unchecked="MaxFanCheckBox_Changed"/>
+                        </StackPanel>
+                    </Border>
+
+                    <!-- Run apps on NVIDIA GPU -->
+                    <Border x:Name="GpuPreferenceCard" Style="{StaticResource Card}">
+                        <StackPanel>
+                            <TextBlock Text="Run apps on NVIDIA GPU" Style="{StaticResource SectionHeader}"/>
+                            <TextBlock TextWrapping="Wrap" FontSize="11" Margin="0,0,0,12"
+                                       Foreground="{DynamicResource TextSecondaryBrush}"
+                                       Text="Sets Windows' per-app graphics preference to High performance, so these apps render on the NVIDIA GPU instead of Intel graphics. Takes effect the next time each app starts, and uses more power and heat."/>
+
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="*"/>
+                                </Grid.ColumnDefinitions>
+                                <Button Grid.Column="0" Content="All installed games" Style="{StaticResource PrimaryButton}"
+                                        Margin="0,0,8,0" Click="GpuApplyToGamesButton_Click"/>
+                                <Button Grid.Column="1" Content="All open apps" Style="{StaticResource SecondaryButton}"
+                                        Click="GpuApplyToOpenAppsButton_Click"/>
+                            </Grid>
+                            <Button Content="Add app..." Style="{StaticResource SecondaryButton}" Margin="0,8,0,0"
+                                    Click="GpuAddAppButton_Click"/>
+
+                            <TextBlock x:Name="GpuPreferenceStatusText" TextWrapping="Wrap" FontSize="11" Margin="0,10,0,0"
+                                       Foreground="{DynamicResource TextSecondaryBrush}" Visibility="Collapsed"/>
+
+                            <TextBlock x:Name="NoGpuPreferenceText" Text="No apps set to use the NVIDIA GPU yet." FontSize="12"
+                                       Foreground="{DynamicResource TextSecondaryBrush}" Margin="0,12,0,0"/>
+                            <StackPanel x:Name="GpuPreferenceListPanel" Margin="0,6,0,0"/>
+                            <Button x:Name="ClearGpuPreferencesButton" Content="Remove all" Style="{StaticResource SecondaryButton}"
+                                    Margin="0,8,0,0" Visibility="Collapsed" Click="ClearGpuPreferencesButton_Click"/>
                         </StackPanel>
                     </Border>
 
@@ -701,35 +764,6 @@
                                         Margin="10,0" Style="{StaticResource ModernSlider}" ValueChanged="TempAlertSlider_ValueChanged"/>
                                 <TextBlock x:Name="TempAlertSliderText" Grid.Column="2" Text="85°C" Style="{StaticResource FieldValue}"/>
                             </Grid>
-                        </StackPanel>
-                    </Border>
-
-                    <!-- Per-game profiles -->
-                    <Border Style="{StaticResource Card}">
-                        <StackPanel>
-                            <TextBlock Text="Per-game profiles" Style="{StaticResource SectionHeader}"/>
-                            <TextBlock TextWrapping="Wrap" FontSize="11" Margin="0,0,0,10"
-                                       Foreground="{DynamicResource TextSecondaryBrush}"
-                                       Text="Automatically switches performance mode while a tracked game is running, then reverts when it closes."/>
-
-                            <StackPanel x:Name="GameProfilesListPanel"/>
-                            <TextBlock x:Name="NoGameProfilesText" Text="No games tracked yet." FontSize="12"
-                                       Foreground="{DynamicResource TextSecondaryBrush}" Margin="0,0,0,10"/>
-
-                            <Grid>
-                                <Grid.ColumnDefinitions>
-                                    <ColumnDefinition Width="*"/>
-                                    <ColumnDefinition Width="Auto"/>
-                                </Grid.ColumnDefinitions>
-                                <Button Grid.Column="0" Content="Scan for installed games" Style="{StaticResource PrimaryButton}"
-                                        Margin="0,0,8,0" Click="ScanForGamesButton_Click"/>
-                                <Button x:Name="BrowseForGameButton" Grid.Column="1" Content="Browse..." Style="{StaticResource SecondaryButton}"
-                                        Padding="14,10" Click="BrowseForGameButton_Click"/>
-                            </Grid>
-
-                            <TextBlock x:Name="GameScanStatusText" TextWrapping="Wrap" FontSize="11" Margin="0,10,0,0"
-                                       Foreground="{DynamicResource TextSecondaryBrush}" Visibility="Collapsed"/>
-                            <StackPanel x:Name="DetectedGamesListPanel" Margin="0,4,0,0"/>
                         </StackPanel>
                     </Border>
 

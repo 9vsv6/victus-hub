@@ -3,11 +3,14 @@ using System.Text.Json;
 
 namespace HpVictusControl;
 
-/// <summary>One tracked game: which performance mode to switch to while it's running.</summary>
+/// <summary>One game: which performance mode to switch to while it's running.</summary>
 public sealed class GameProfile {
+    public const string NoSwitch = "None";
+
     public string Name { get; set; } = "";
     public string ExecutablePath { get; set; } = "";
     public string Mode { get; set; } = "Performance";
+    public bool IsScanned { get; set; }
 }
 
 /// <summary>Small local settings file so the app remembers user preferences across restarts.</summary>
@@ -24,6 +27,8 @@ public sealed class AppSettings {
     public bool ExitOnClose { get; set; }
     public DateTime? LastUpdateCheckUtc { get; set; }
     public int PerformanceRefreshRateHz { get; set; }
+    public int BalancedRefreshRateHz { get; set; } = 60;
+    public int CoolRefreshRateHz { get; set; } = 60;
     public string LastTab { get; set; } = "Performance";
     public double WindowLeft { get; set; }
     public double WindowTop { get; set; }
