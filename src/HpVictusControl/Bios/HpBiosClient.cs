@@ -12,6 +12,15 @@ public enum HpFanMode : byte {
     Cool = 0x50,
 }
 
+/// <summary>Which GPU drives the laptop's own screen, as set by the BIOS graphics switch (MUX).</summary>
+public enum HpGpuMode : byte {
+    /// <summary>The integrated GPU drives the screen; the NVIDIA GPU renders games and hands frames over.</summary>
+    Hybrid = 0x00,
+    /// <summary>The NVIDIA GPU drives the screen directly — no hand-over, more fps, more power draw.</summary>
+    Discrete = 0x01,
+    Optimus = 0x02,
+}
+
 public sealed class HpBiosException : Exception {
     public HpBiosException(string message) : base(message) { }
     public HpBiosException(string message, Exception inner) : base(message, inner) { }
@@ -37,6 +46,10 @@ public sealed class HpBiosClient : IDisposable {
 
     // Command identifier for most sensor/fan/performance commands.
     private const uint CmdDefault = 0x20008;
+
+    // The graphics mode commands use the older read (1) / write (2) command identifiers.
+    private const uint CmdRead = 0x01;
+    private const uint CmdWrite = 0x02;
 
     private ManagementScope? _scope;
     private ManagementObject? _methodObject;
@@ -82,7 +95,10 @@ public sealed class HpBiosClient : IDisposable {
     /// Sends one command to the BIOS and returns its status code (0 = success).
     /// <paramref name="outSize"/> must be one of the sizes the provider exposes a method for: 0, 4, 128, 1024, 4096.
     /// </summary>
-    private int Send(uint commandType, byte[] inData, byte outSize, out byte[] outData) {
+    private int Send(uint commandType, byte[] inData, byte outSize, out byte[] outData) =>
+        Send(CmdDefault, commandType, inData, outSize, out outData);
+
+    private int Send(uint command, uint commandType, byte[] inData, byte outSize, out byte[] outData) {
         EnsureAvailable();
 
         outData = Array.Empty<byte>();
@@ -92,7 +108,7 @@ public sealed class HpBiosClient : IDisposable {
             using ManagementObject dataIn = _dataClass!.CreateInstance();
 
             dataIn["Sign"] = Signature;
-            dataIn["Command"] = CmdDefault;
+            dataIn["Command"] = command;
             dataIn["CommandType"] = commandType;
             dataIn["Size"] = (uint)inData.Length;
             if (inData.Length > 0)
@@ -166,6 +182,39 @@ public sealed class HpBiosClient : IDisposable {
 
     public void SetFanMode(HpFanMode mode) {
         int rc = Send(0x1A, new byte[] { 0xFF, (byte)mode, 0x00, 0x00 }, 0, out _);
+        Check(rc);
+    }
+
+    // ----- Graphics switch (MUX) --------------------------------------------------------------
+
+    /// <summary>
+    /// The BIOS's "system design data" block: which optional hardware features this model has.
+    /// Byte 7 bit 3 says whether there's a graphics switch at all.
+    /// </summary>
+    public byte[] GetSystemDesignData() {
+        int rc = Send(0x28, new byte[4], 128, out byte[] outData);
+        Check(rc);
+        return outData;
+    }
+
+    /// <summary>
+    /// Whether this laptop has a BIOS graphics switch. This has to be asked separately: on models
+    /// without one, reading the GPU mode doesn't fail, it just answers "Hybrid".
+    /// </summary>
+    public bool IsGraphicsSwitchSupported() {
+        byte[] design = GetSystemDesignData();
+        return design.Length > 7 && (design[7] & 0x08) != 0;
+    }
+
+    public HpGpuMode GetGpuMode() {
+        int rc = Send(CmdRead, 0x52, new byte[4], 4, out byte[] outData);
+        Check(rc);
+        return (HpGpuMode)outData[0];
+    }
+
+    /// <summary>Stores a new graphics mode; the BIOS applies it on the next restart.</summary>
+    public void SetGpuMode(HpGpuMode mode) {
+        int rc = Send(CmdWrite, 0x52, new byte[] { (byte)mode, 0x00, 0x00, 0x00 }, 0, out _);
         Check(rc);
     }
 

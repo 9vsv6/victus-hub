@@ -100,6 +100,73 @@ public static class DisplayRefreshRate {
         return rates;
     }
 
+    private const int DM_PELSWIDTH = 0x80000;
+    private const int DM_PELSHEIGHT = 0x100000;
+
+    public static (int Width, int Height)? GetCurrentResolution() {
+        DEVMODE current = NewDevMode();
+        return EnumDisplaySettingsW(null, ENUM_CURRENT_SETTINGS, ref current) ? (current.dmPelsWidth, current.dmPelsHeight) : null;
+    }
+
+    /// <summary>
+    /// Resolutions worth offering per game: the same shape as the panel's native (largest) resolution, so
+    /// nothing gets stretched, largest first, at most <paramref name="limit"/>. Based on the native size
+    /// rather than the current one, so the list doesn't shrink while a game has the resolution lowered.
+    /// </summary>
+    public static List<(int Width, int Height)> GetGameResolutions(int limit = 4) {
+        var modes = new List<(int Width, int Height)>();
+        int modeNum = 0;
+        DEVMODE dm = NewDevMode();
+        while (EnumDisplaySettingsW(null, modeNum, ref dm)) {
+            if (dm.dmPelsHeight > 0 && !modes.Contains((dm.dmPelsWidth, dm.dmPelsHeight))) modes.Add((dm.dmPelsWidth, dm.dmPelsHeight));
+            modeNum++;
+            dm = NewDevMode();
+        }
+        if (modes.Count == 0) return modes;
+
+        (int Width, int Height) native = modes.MaxBy(m => (long)m.Width * m.Height);
+        double aspect = (double)native.Width / native.Height;
+        // Tight enough to drop near-misses like 1360×768 beside 1366×768; one mode per height, since the
+        // game cards label them "768p".
+        return modes
+            .Where(m => m.Width >= 1024 && Math.Abs((double)m.Width / m.Height - aspect) < 0.005)
+            .OrderByDescending(m => (long)m.Width * m.Height)
+            .DistinctBy(m => m.Height)
+            .Take(limit)
+            .ToList();
+    }
+
+    /// <summary>
+    /// Changes the resolution, keeping the current refresh rate when the new size supports it (otherwise
+    /// the highest it does). Best-effort; returns false if Windows refuses.
+    /// </summary>
+    public static bool SetResolution(int width, int height, bool persist = false) {
+        DEVMODE current = NewDevMode();
+        if (!EnumDisplaySettingsW(null, ENUM_CURRENT_SETTINGS, ref current)) return false;
+        if (current.dmPelsWidth == width && current.dmPelsHeight == height) return true;
+
+        int bestHz = 0;
+        int modeNum = 0;
+        DEVMODE dm = NewDevMode();
+        while (EnumDisplaySettingsW(null, modeNum, ref dm)) {
+            if (dm.dmPelsWidth == width && dm.dmPelsHeight == height) {
+                if (dm.dmDisplayFrequency == current.dmDisplayFrequency) { bestHz = dm.dmDisplayFrequency; break; }
+                bestHz = Math.Max(bestHz, dm.dmDisplayFrequency);
+            }
+            modeNum++;
+            dm = NewDevMode();
+        }
+        if (bestHz == 0) return false;
+
+        current.dmPelsWidth = width;
+        current.dmPelsHeight = height;
+        current.dmDisplayFrequency = bestHz;
+        current.dmFields = DM_PELSWIDTH | DM_PELSHEIGHT | DM_DISPLAYFREQUENCY;
+        // A game's lowered resolution isn't saved to the registry, so it can't survive a crash or restart;
+        // putting the original back is saved, in case anything wrote the lowered one there meanwhile.
+        return ChangeDisplaySettingsW(ref current, persist ? CDS_UPDATEREGISTRY : 0) == DISP_CHANGE_SUCCESSFUL;
+    }
+
     /// <summary>Sets the display's refresh rate, keeping its current resolution/color depth. Best-effort.</summary>
     public static bool SetRefreshRate(int hz) {
         DEVMODE dm = NewDevMode();

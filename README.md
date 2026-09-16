@@ -13,8 +13,15 @@ tray icon that polls the BIOS every 2 seconds.
 - Manual fan speed per fan (best-effort — see note below)
 - Force max fan speed
 - Performance mode switch: Balanced / Performance / Cool
-- Per-game profiles: performance mode, display refresh rate, FPS cap, max fan while playing,
-  and which GPU the game runs on — applied when the game starts, put back when it closes
+- Per-game profiles: performance mode, refresh rate, resolution, FPS cap, max fan, game boost
+  (CPU priority, OneDrive paused) and which GPU the game runs on — applied when the game starts,
+  put back when it closes; optional Wi-Fi tuning (background scanning off) while any game runs
+- Configurable global shortcuts for max fan and cycling the performance mode
+- Keeps Windows' power plan in step with the selected mode
+- Driver & BIOS updates from HP, NVIDIA and Intel in a sortable table, with a battery/charger
+  safety check before BIOS installs and automatic cleanup of downloaded installers
+- System page: laptop details, battery health, BIOS graphics switch (where the model has one),
+  fan test, shader cache cleanup
 
 ## Requirements
 

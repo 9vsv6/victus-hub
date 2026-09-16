@@ -97,7 +97,7 @@ public static class NvidiaDriverUpdateService {
     // (e.g. "616.92") in the last two segments: concatenate them, drop the leading digit, then
     // place a decimal point two digits from the end. Verified against two known pairs before
     // trusting it (32.0.16.1692 -> 616.92, 32.0.15.9191 -> 591.91).
-    private static bool TryConvertToMarketingVersion(string windowsDriverVersion, out double marketing) {
+    internal static bool TryConvertToMarketingVersion(string windowsDriverVersion, out double marketing) {
         marketing = 0;
         string[] parts = windowsDriverVersion.Split('.');
         if (parts.Length != 4) return false;

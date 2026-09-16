@@ -12,6 +12,10 @@ public sealed class GameProfile {
     public string Mode { get; set; } = "Performance";
     public int RefreshRateHz { get; set; }
     public bool MaxFan { get; set; }
+    public bool Boost { get; set; }
+    // 0 × 0 = leave the resolution alone.
+    public int ResolutionWidth { get; set; }
+    public int ResolutionHeight { get; set; }
     public bool IsScanned { get; set; }
 }
 
@@ -19,6 +23,9 @@ public sealed class GameProfile {
 public sealed class AppSettings {
 
     public bool DarkTheme { get; set; }
+    public bool MatchWindowsTheme { get; set; }
+    public bool TuneWifiForGames { get; set; }
+    public bool AutoCleanDriverDownloads { get; set; } = true;
     public bool AlwaysOnTop { get; set; }
     public bool AutoPowerSwitch { get; set; }
     public string PerformanceMode { get; set; } = "Balanced";
@@ -33,6 +40,10 @@ public sealed class AppSettings {
     public int BalancedRefreshRateHz { get; set; } = 60;
     public int CoolRefreshRateHz { get; set; } = 60;
     public string LastTab { get; set; } = "Performance";
+    public string LastSection { get; set; } = "Performance";
+    // Global shortcuts as text ("Ctrl+Alt+F12"); an empty string turns that shortcut off.
+    public string CycleModeHotkey { get; set; } = "Ctrl+Alt+F12";
+    public string MaxFanHotkey { get; set; } = "Ctrl+Alt+F11";
     public double WindowLeft { get; set; }
     public double WindowTop { get; set; }
     public double WindowWidth { get; set; }

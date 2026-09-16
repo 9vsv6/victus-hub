@@ -344,10 +344,55 @@
                             <Trigger Property="IsMouseOver" Value="True">
                                 <Setter TargetName="Bg" Property="Background" Value="{DynamicResource BorderBrush2}"/>
                             </Trigger>
+                            <Trigger Property="IsEnabled" Value="False">
+                                <Setter Property="Foreground" Value="{DynamicResource TextSecondaryBrush}"/>
+                                <Setter TargetName="Bg" Property="Opacity" Value="0.6"/>
+                            </Trigger>
                         </ControlTemplate.Triggers>
                     </ControlTemplate>
                 </Setter.Value>
             </Setter>
+        </Style>
+
+        <!-- Outlined accent button: for actions repeated on every row, where solid green would shout -->
+        <Style x:Key="OutlineAccentButton" TargetType="Button">
+            <Setter Property="Background" Value="Transparent"/>
+            <Setter Property="Foreground" Value="{DynamicResource AccentBrush}"/>
+            <Setter Property="BorderBrush" Value="{DynamicResource AccentBrush}"/>
+            <Setter Property="FontWeight" Value="SemiBold"/>
+            <Setter Property="FontSize" Value="12"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="Padding" Value="14,6"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border x:Name="Bg" Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}"
+                                BorderThickness="1" CornerRadius="8">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"
+                                              Margin="{TemplateBinding Padding}"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Bg" Property="Background" Value="{DynamicResource GlowFillBrush}"/>
+                            </Trigger>
+                            <Trigger Property="IsEnabled" Value="False">
+                                <Setter TargetName="Bg" Property="BorderBrush" Value="{DynamicResource BorderBrush2}"/>
+                                <Setter Property="Foreground" Value="{DynamicResource TextSecondaryBrush}"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <!-- Sortable column header in the updates table -->
+        <Style x:Key="TableHeaderText" TargetType="TextBlock">
+            <Setter Property="FontSize" Value="11"/>
+            <Setter Property="FontWeight" Value="SemiBold"/>
+            <Setter Property="Foreground" Value="{DynamicResource TextSecondaryBrush}"/>
+            <Setter Property="VerticalAlignment" Value="Center"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="Background" Value="Transparent"/>
         </Style>
 
         <!-- Thin, theme-matched scrollbar (applies to every ScrollViewer's internal ScrollBar) -->
@@ -416,6 +461,9 @@
             <RadioButton x:Name="DriversTabRadio" Style="{StaticResource SidebarNavItem}"
                          Tag="M19 9h-4V3H9v6H5l7 7 7-7zM5 18v2h14v-2H5z" Content="Drivers"
                          GroupName="TopTab" Checked="TopTab_Changed"/>
+            <RadioButton x:Name="SystemTabRadio" Style="{StaticResource SidebarNavItem}"
+                         Tag="F0 M4 4h16a1 1 0 0 1 1 1v11H3V5a1 1 0 0 1 1-1z M5 6v8h14V6z M1 17h22v1.5A1.5 1.5 0 0 1 21.5 20h-19A1.5 1.5 0 0 1 1 18.5z"
+                         Content="System" GroupName="TopTab" Checked="TopTab_Changed"/>
             <RadioButton x:Name="SettingsTabRadio" Style="{StaticResource SidebarNavItem}"
                          Tag="M19.14,12.94c0.04,-0.3 0.06,-0.61 0.06,-0.94c0,-0.32 -0.02,-0.64 -0.07,-0.94l2.03,-1.58c0.18,-0.14 0.23,-0.41 0.12,-0.61l-1.92,-3.32c-0.12,-0.22 -0.37,-0.29 -0.59,-0.22l-2.39,0.96c-0.5,-0.38 -1.03,-0.7 -1.62,-0.94L14.4,2.81c-0.04,-0.24 -0.24,-0.41 -0.48,-0.41h-3.84c-0.24,0 -0.43,0.17 -0.47,0.41L9.25,5.35C8.66,5.59 8.12,5.92 7.63,6.29L5.24,5.33c-0.22,-0.08 -0.47,0 -0.59,0.22L2.74,8.87C2.62,9.08 2.66,9.34 2.86,9.48l2.03,1.58C4.84,11.36 4.8,11.69 4.8,12s0.02,0.64 0.07,0.94l-2.03,1.58c-0.18,0.14 -0.23,0.41 -0.12,0.61l1.92,3.32c0.12,0.22 0.37,0.29 0.59,0.22l2.39,-0.96c0.5,0.38 1.03,0.7 1.62,0.94l0.36,2.54c0.05,0.24 0.24,0.41 0.48,0.41h3.84c0.24,0 0.44,-0.17 0.47,-0.41l0.36,-2.54c0.59,-0.24 1.13,-0.56 1.62,-0.94l2.39,0.96c0.22,0.08 0.47,0 0.59,-0.22l1.92,-3.32c0.12,-0.22 0.07,-0.47 -0.12,-0.61L19.14,12.94zM12,15.6c-1.98,0 -3.6,-1.62 -3.6,-3.6s1.62,-3.6 3.6,-3.6s3.6,1.62 3.6,3.6S13.98,15.6 12,15.6z"
                          Content="Settings" GroupName="TopTab" Checked="TopTab_Changed"/>
@@ -441,245 +489,452 @@
                 <!-- ===================== Performance tab ===================== -->
                 <StackPanel x:Name="PerformanceTabPanel">
 
-                    <!-- Live stats -->
-                    <Border Style="{StaticResource HeroCard}">
-                        <StackPanel>
-                            <TextBlock Text="Live stats" Style="{StaticResource SectionHeader}"/>
+                    <!-- Section bar: switches between the performance controls and the games list, and keeps
+                         temperatures and the active mode in view on either one. -->
+                    <Border Style="{StaticResource Card}" Padding="5">
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto"/>
+                                <ColumnDefinition Width="*"/>
+                            </Grid.ColumnDefinitions>
+                            <StackPanel Orientation="Horizontal">
+                                <RadioButton x:Name="PerformanceSectionRadio" GroupName="PerformanceSection" IsChecked="True"
+                                             Style="{StaticResource SegmentRadio}" Padding="14,6" Checked="PerformanceSection_Changed">
+                                    <StackPanel Orientation="Horizontal">
+                                        <Path Data="M4 17a8 8 0 1 1 16 0 M12 17 16 10" Width="13" Height="13" Stretch="Uniform"
+                                              StrokeThickness="2" StrokeStartLineCap="Round" StrokeEndLineCap="Round" Margin="0,0,7,0"
+                                              Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=RadioButton}}"/>
+                                        <TextBlock Text="Performance"/>
+                                    </StackPanel>
+                                </RadioButton>
+                                <RadioButton x:Name="GamesSectionRadio" GroupName="PerformanceSection"
+                                             Style="{StaticResource SegmentRadio}" Padding="14,6" Checked="PerformanceSection_Changed">
+                                    <StackPanel Orientation="Horizontal">
+                                        <Path Data="M7 8h10a4 4 0 0 1 4 4v2a3 3 0 0 1-5.2 2L14 14h-4l-1.8 2A3 3 0 0 1 3 14v-2a4 4 0 0 1 4-4z M7 11v2 M6 12h2 M15.5 12h.01 M17.5 11h.01"
+                                              Width="14" Height="14" Stretch="Uniform" StrokeThickness="1.8" Margin="0,0,7,0"
+                                              StrokeStartLineCap="Round" StrokeEndLineCap="Round" StrokeLineJoin="Round"
+                                              Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=RadioButton}}"/>
+                                        <TextBlock Text="Games"/>
+                                    </StackPanel>
+                                </RadioButton>
+                            </StackPanel>
+                            <TextBlock x:Name="SectionStatusText" Grid.Column="1" HorizontalAlignment="Right" VerticalAlignment="Center"
+                                       Margin="12,0,10,0" FontSize="11" TextTrimming="CharacterEllipsis"
+                                       Foreground="{DynamicResource TextSecondaryBrush}"/>
+                        </Grid>
+                    </Border>
+
+                    <!-- ===== Performance section ===== -->
+                    <StackPanel x:Name="PerformanceSectionPanel">
+
+                        <!-- Live stats and fan control side by side; stacked when the window is narrow. -->
+                        <Grid x:Name="PerformanceColumnsGrid" SizeChanged="PerformanceColumnsGrid_SizeChanged">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="*"/>
+                            </Grid.ColumnDefinitions>
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto"/>
+                                <RowDefinition Height="Auto"/>
+                            </Grid.RowDefinitions>
+
+                            <!-- Live stats -->
+                            <Border x:Name="LiveStatsCard" Style="{StaticResource HeroCard}" Margin="0,0,7,14">
+                                <StackPanel>
+                                    <TextBlock Text="Live stats" Style="{StaticResource SectionHeader}"/>
+                                    <Grid>
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="*"/>
+                                            <ColumnDefinition Width="*"/>
+                                        </Grid.ColumnDefinitions>
+                                        <Grid.RowDefinitions>
+                                            <RowDefinition Height="Auto"/>
+                                            <RowDefinition Height="Auto"/>
+                                            <RowDefinition Height="Auto"/>
+                                        </Grid.RowDefinitions>
+                                        <StackPanel Grid.Row="0" Grid.Column="0" Margin="0,0,8,14">
+                                            <TextBlock Text="CPU TEMP" Style="{StaticResource StatLabel}"/>
+                                            <TextBlock x:Name="TemperatureText" Text="--°C" Style="{StaticResource HeroStatValue}"/>
+                                        </StackPanel>
+                                        <StackPanel x:Name="GpuTempPanel" Grid.Row="0" Grid.Column="1" Margin="0,0,0,14"
+                                                    ToolTip="Not available — no NVIDIA GPU detected (reads via nvidia-smi).">
+                                            <TextBlock Text="GPU TEMP" Style="{StaticResource StatLabel}"/>
+                                            <TextBlock x:Name="GpuTempText" Text="N/A" Style="{StaticResource HeroStatValue}"/>
+                                        </StackPanel>
+                                        <StackPanel Grid.Row="1" Grid.Column="0" Margin="0,0,8,14">
+                                            <TextBlock Text="CPU USAGE" Style="{StaticResource StatLabel}"/>
+                                            <TextBlock x:Name="CpuUsageText" Text="--%" Style="{StaticResource HeroStatValue}"/>
+                                        </StackPanel>
+                                        <StackPanel x:Name="GpuUsagePanel" Grid.Row="1" Grid.Column="1" Margin="0,0,0,14"
+                                                    ToolTip="Not available — no NVIDIA GPU detected (reads via nvidia-smi).">
+                                            <TextBlock Text="GPU USAGE" Style="{StaticResource StatLabel}"/>
+                                            <TextBlock x:Name="GpuUsageText" Text="N/A" Style="{StaticResource HeroStatValue}"/>
+                                        </StackPanel>
+                                        <StackPanel Grid.Row="2" Grid.Column="0" Margin="0,0,8,0">
+                                            <TextBlock Text="RAM" Style="{StaticResource StatLabel}"/>
+                                            <TextBlock x:Name="RamText" Text="-- GB" Style="{StaticResource HeroStatValue}"/>
+                                        </StackPanel>
+                                    </Grid>
+                                    <Border Height="1" Background="{DynamicResource BorderBrush2}" Margin="0,14,0,10"/>
+                                    <TextBlock x:Name="BatteryStatusText" Text="Battery --" TextWrapping="Wrap"
+                                               FontSize="11" Foreground="{DynamicResource TextSecondaryBrush}"/>
+                                    <TextBlock x:Name="GpuDetailText" Text="" Margin="0,4,0,0" TextWrapping="Wrap"
+                                               FontSize="11" Foreground="{DynamicResource TextSecondaryBrush}" Visibility="Collapsed"/>
+                                    <TextBlock x:Name="IntelGpuDetailText" Text="" Margin="0,4,0,0" TextWrapping="Wrap"
+                                               FontSize="11" Foreground="{DynamicResource TextSecondaryBrush}" Visibility="Collapsed"/>
+                                    <TextBlock x:Name="RamDetailText" Text="" Margin="0,4,0,0" TextWrapping="Wrap"
+                                               FontSize="11" Foreground="{DynamicResource TextSecondaryBrush}"/>
+                                </StackPanel>
+                            </Border>
+
+                            <!-- Fan control -->
+                            <Border x:Name="FanControlCard" Grid.Column="1" Style="{StaticResource Card}" Margin="7,0,0,14">
+                                <StackPanel>
+                                    <TextBlock Text="Fan control" Style="{StaticResource SectionHeader}"/>
+
+                                    <Grid Margin="0,0,0,14">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="*"/>
+                                            <ColumnDefinition Width="*"/>
+                                        </Grid.ColumnDefinitions>
+                                        <StackPanel Grid.Column="0">
+                                            <TextBlock Text="CPU FAN" Style="{StaticResource StatLabel}"/>
+                                            <TextBlock x:Name="CpuFanText" Text="-- RPM" Style="{StaticResource StatValue}"/>
+                                        </StackPanel>
+                                        <StackPanel Grid.Column="1">
+                                            <TextBlock Text="GPU FAN" Style="{StaticResource StatLabel}"/>
+                                            <TextBlock x:Name="GpuFanText" Text="-- RPM" Style="{StaticResource StatValue}"/>
+                                        </StackPanel>
+                                    </Grid>
+
+                                    <CheckBox x:Name="MaxFanCheckBox" Content="Force max fan speed" Style="{StaticResource GlowToggle}"
+                                              Checked="MaxFanCheckBox_Changed" Unchecked="MaxFanCheckBox_Changed"/>
+
+                                    <Border Height="1" Background="{DynamicResource BorderBrush2}" Margin="0,14,0,14"/>
+
+                                    <CheckBox x:Name="AutoFanCheckBox" Content="Auto fan by temperature" Style="{StaticResource GlowToggle}"
+                                              Checked="AutoFanCheckBox_Changed" Unchecked="AutoFanCheckBox_Changed"/>
+                                    <TextBlock Text="Ramps CPU/GPU fan speed with their own temperature instead of the BIOS's built-in curve"
+                                               FontSize="11" Foreground="{DynamicResource TextSecondaryBrush}" Margin="26,3,0,0" TextWrapping="Wrap"/>
+
+                                    <Border Height="1" Background="{DynamicResource BorderBrush2}" Margin="0,14,0,14"/>
+
+                                    <CheckBox x:Name="ManualCheckBox" Content="Manual fan speed" Style="{StaticResource ModernCheckBox}"
+                                              Checked="ManualCheckBox_Changed" Unchecked="ManualCheckBox_Changed"/>
+
+                                    <Grid Margin="0,12,0,0" IsEnabled="{Binding ElementName=ManualCheckBox, Path=IsChecked}">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="40"/>
+                                            <ColumnDefinition Width="*"/>
+                                            <ColumnDefinition Width="30"/>
+                                        </Grid.ColumnDefinitions>
+                                        <Grid.RowDefinitions>
+                                            <RowDefinition Height="Auto"/>
+                                            <RowDefinition Height="Auto"/>
+                                        </Grid.RowDefinitions>
+
+                                        <TextBlock Grid.Row="0" Grid.Column="0" Text="CPU" Style="{StaticResource FieldLabel}"/>
+                                        <Slider x:Name="CpuFanSlider" Grid.Row="0" Grid.Column="1" Minimum="0" Maximum="60"
+                                                Margin="10,0" Style="{StaticResource ModernSlider}" ValueChanged="FanSlider_ValueChanged"/>
+                                        <TextBlock x:Name="CpuFanSliderText" Grid.Row="0" Grid.Column="2" Text="0" Style="{StaticResource FieldValue}"/>
+
+                                        <TextBlock Grid.Row="1" Grid.Column="0" Text="GPU" Style="{StaticResource FieldLabel}" Margin="0,14,0,0"/>
+                                        <Slider x:Name="GpuFanSlider" Grid.Row="1" Grid.Column="1" Minimum="0" Maximum="60"
+                                                Margin="10,14,10,0" Style="{StaticResource ModernSlider}" ValueChanged="FanSlider_ValueChanged"/>
+                                        <TextBlock x:Name="GpuFanSliderText" Grid.Row="1" Grid.Column="2" Text="0" Style="{StaticResource FieldValue}" Margin="0,14,0,0"/>
+                                    </Grid>
+
+                                    <Button x:Name="ApplyFanButton" Content="Apply fan speed" Style="{StaticResource PrimaryButton}"
+                                            Margin="0,14,0,0" IsEnabled="False" Click="ApplyFanButton_Click"/>
+                                </StackPanel>
+                            </Border>
+                        </Grid>
+
+                        <!-- Performance mode -->
+                        <Border Style="{StaticResource Card}">
+                            <StackPanel>
+                                <TextBlock Text="Performance mode" Style="{StaticResource SectionHeader}"/>
+                                <Border Background="{DynamicResource TrackBrush}" CornerRadius="9">
+                                    <Grid>
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="*"/>
+                                            <ColumnDefinition Width="*"/>
+                                            <ColumnDefinition Width="*"/>
+                                        </Grid.ColumnDefinitions>
+                                        <RadioButton x:Name="BalancedRadio" Grid.Column="0" Content="Balanced" GroupName="Mode"
+                                                     Style="{StaticResource SegmentRadio}" Checked="ModeRadio_Checked"/>
+                                        <RadioButton x:Name="PerformanceRadio" Grid.Column="1" Content="Performance" GroupName="Mode"
+                                                     Style="{StaticResource SegmentRadio}" Checked="ModeRadio_Checked"/>
+                                        <RadioButton x:Name="CoolRadio" Grid.Column="2" Content="Cool" GroupName="Mode"
+                                                     Style="{StaticResource SegmentRadio}" Checked="ModeRadio_Checked"/>
+                                    </Grid>
+                                </Border>
+
+                                <CheckBox x:Name="AutoPowerCheckBox" Content="Auto-switch by power source" Style="{StaticResource GlowToggle}"
+                                          Margin="0,14,0,0" Checked="AutoPowerCheckBox_Changed" Unchecked="AutoPowerCheckBox_Changed"/>
+                                <TextBlock Text="Performance when plugged in, Cool on battery" FontSize="11"
+                                           Foreground="{DynamicResource TextSecondaryBrush}" Margin="26,3,0,0"/>
+
+                                <TextBlock x:Name="RefreshRateLabel" Text="Refresh rate" Style="{StaticResource FieldLabel}" Margin="0,14,0,8"/>
+                                <Border x:Name="RefreshRateTrack" Background="{DynamicResource TrackBrush}" CornerRadius="9" HorizontalAlignment="Left">
+                                    <StackPanel x:Name="RefreshRateOptionsPanel" Orientation="Horizontal"/>
+                                </Border>
+                                <TextBlock x:Name="RefreshRateStatusText" TextWrapping="Wrap" FontSize="11" Margin="0,6,0,0"
+                                           Foreground="{DynamicResource TextSecondaryBrush}" Visibility="Collapsed"/>
+
+                                <TextBlock x:Name="CycleModeTipText" Text="Tip: press Ctrl+Alt+F12 anywhere to cycle performance mode" FontSize="11"
+                                           Foreground="{DynamicResource TextSecondaryBrush}" Margin="0,14,0,0"/>
+                            </StackPanel>
+                        </Border>
+                    </StackPanel>
+
+                    <!-- ===== Games section ===== -->
+                    <StackPanel x:Name="GamesSectionPanel" Visibility="Collapsed">
+                        <Border Style="{StaticResource Card}">
                             <Grid>
                                 <Grid.ColumnDefinitions>
                                     <ColumnDefinition Width="*"/>
                                     <ColumnDefinition Width="Auto"/>
-                                    <ColumnDefinition Width="*"/>
-                                    <ColumnDefinition Width="Auto"/>
-                                    <ColumnDefinition Width="*"/>
-                                    <ColumnDefinition Width="Auto"/>
-                                    <ColumnDefinition Width="*"/>
-                                    <ColumnDefinition Width="Auto"/>
-                                    <ColumnDefinition Width="*"/>
                                 </Grid.ColumnDefinitions>
-                                <StackPanel Grid.Column="0">
-                                    <TextBlock Text="CPU TEMP" Style="{StaticResource StatLabel}"/>
-                                    <TextBlock x:Name="TemperatureText" Text="--°C" Style="{StaticResource HeroStatValue}"/>
+                                <StackPanel VerticalAlignment="Center">
+                                    <StackPanel Orientation="Horizontal">
+                                        <TextBlock Text="Games" Style="{StaticResource SectionHeader}" Margin="0,0,8,4"/>
+                                        <TextBlock x:Name="GameCountText" FontSize="11" Margin="0,1,0,4" VerticalAlignment="Center"
+                                                   Foreground="{DynamicResource TextSecondaryBrush}"/>
+                                    </StackPanel>
+                                    <TextBlock TextWrapping="Wrap" FontSize="11" Foreground="{DynamicResource TextSecondaryBrush}"
+                                               Text="Mode, refresh rate and max fan switch on while a game runs and go back when it closes. The FPS cap is stored in the NVIDIA driver, the same as Control Panel's Max Frame Rate."/>
+                                    <TextBlock x:Name="GameScanStatusText" TextWrapping="Wrap" FontSize="11" Margin="0,6,0,0"
+                                               Foreground="{DynamicResource TextSecondaryBrush}" Visibility="Collapsed"/>
+                                    <CheckBox x:Name="TuneWifiCheckBox" Content="Tune Wi-Fi while playing" Style="{StaticResource GlowToggle}"
+                                              Margin="0,12,0,0" HorizontalAlignment="Left" MinWidth="320"
+                                              Checked="TuneWifiCheckBox_Changed" Unchecked="TuneWifiCheckBox_Changed"
+                                              ToolTip="While any game in this list runs, stops Windows scanning for other Wi-Fi networks in the background — the usual cause of lag spikes that repeat about once a minute."/>
                                 </StackPanel>
-                                <Border Grid.Column="1" Width="1" Margin="8,2" Background="{DynamicResource BorderBrush2}"/>
-                                <StackPanel x:Name="GpuTempPanel" Grid.Column="2"
-                                            ToolTip="Not available — no NVIDIA GPU detected (reads via nvidia-smi).">
-                                    <TextBlock Text="GPU TEMP" Style="{StaticResource StatLabel}"/>
-                                    <TextBlock x:Name="GpuTempText" Text="N/A" Style="{StaticResource HeroStatValue}"/>
-                                </StackPanel>
-                                <Border Grid.Column="3" Width="1" Margin="8,2" Background="{DynamicResource BorderBrush2}"/>
-                                <StackPanel Grid.Column="4">
-                                    <TextBlock Text="CPU USAGE" Style="{StaticResource StatLabel}"/>
-                                    <TextBlock x:Name="CpuUsageText" Text="--%" Style="{StaticResource HeroStatValue}"/>
-                                </StackPanel>
-                                <Border Grid.Column="5" Width="1" Margin="8,2" Background="{DynamicResource BorderBrush2}"/>
-                                <StackPanel x:Name="GpuUsagePanel" Grid.Column="6"
-                                            ToolTip="Not available — no NVIDIA GPU detected (reads via nvidia-smi).">
-                                    <TextBlock Text="GPU USAGE" Style="{StaticResource StatLabel}"/>
-                                    <TextBlock x:Name="GpuUsageText" Text="N/A" Style="{StaticResource HeroStatValue}"/>
-                                </StackPanel>
-                                <Border Grid.Column="7" Width="1" Margin="8,2" Background="{DynamicResource BorderBrush2}"/>
-                                <StackPanel Grid.Column="8">
-                                    <TextBlock Text="RAM" Style="{StaticResource StatLabel}"/>
-                                    <TextBlock x:Name="RamText" Text="-- GB" Style="{StaticResource HeroStatValue}"/>
+                                <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center" Margin="16,0,0,0">
+                                    <Button x:Name="BrowseForGameButton" Content="Add game..." Style="{StaticResource SecondaryButton}"
+                                            Padding="14,8" Margin="0,0,8,0" Click="BrowseForGameButton_Click"/>
+                                    <Button Content="Scan for games" Style="{StaticResource PrimaryButton}"
+                                            Padding="16,8" Click="ScanForGamesButton_Click"/>
                                 </StackPanel>
                             </Grid>
-                            <Border Height="1" Background="{DynamicResource BorderBrush2}" Margin="0,14,0,10"/>
-                            <TextBlock x:Name="BatteryStatusText" Text="Battery --"
-                                       FontSize="11" Foreground="{DynamicResource TextSecondaryBrush}"/>
-                            <TextBlock x:Name="GpuDetailText" Text="" Margin="0,4,0,0"
-                                       FontSize="11" Foreground="{DynamicResource TextSecondaryBrush}" Visibility="Collapsed"/>
-                            <TextBlock x:Name="IntelGpuDetailText" Text="" Margin="0,4,0,0"
-                                       FontSize="11" Foreground="{DynamicResource TextSecondaryBrush}" Visibility="Collapsed"/>
-                            <TextBlock x:Name="RamDetailText" Text="" Margin="0,4,0,0"
-                                       FontSize="11" Foreground="{DynamicResource TextSecondaryBrush}"/>
-                        </StackPanel>
-                    </Border>
+                        </Border>
 
-                    <!-- Performance mode -->
-                    <Border Style="{StaticResource Card}">
-                        <StackPanel>
-                            <TextBlock Text="Performance mode" Style="{StaticResource SectionHeader}"/>
-                            <Border Background="{DynamicResource TrackBrush}" CornerRadius="9">
-                                <Grid>
-                                    <Grid.ColumnDefinitions>
-                                        <ColumnDefinition Width="*"/>
-                                        <ColumnDefinition Width="*"/>
-                                        <ColumnDefinition Width="*"/>
-                                    </Grid.ColumnDefinitions>
-                                    <RadioButton x:Name="BalancedRadio" Grid.Column="0" Content="Balanced" GroupName="Mode"
-                                                 Style="{StaticResource SegmentRadio}" Checked="ModeRadio_Checked"/>
-                                    <RadioButton x:Name="PerformanceRadio" Grid.Column="1" Content="Performance" GroupName="Mode"
-                                                 Style="{StaticResource SegmentRadio}" Checked="ModeRadio_Checked"/>
-                                    <RadioButton x:Name="CoolRadio" Grid.Column="2" Content="Cool" GroupName="Mode"
-                                                 Style="{StaticResource SegmentRadio}" Checked="ModeRadio_Checked"/>
-                                </Grid>
-                            </Border>
-
-                            <CheckBox x:Name="AutoPowerCheckBox" Content="Auto-switch by power source" Style="{StaticResource GlowToggle}"
-                                      Margin="0,14,0,0" Checked="AutoPowerCheckBox_Changed" Unchecked="AutoPowerCheckBox_Changed"/>
-                            <TextBlock Text="Performance when plugged in, Cool on battery" FontSize="11"
-                                       Foreground="{DynamicResource TextSecondaryBrush}" Margin="26,3,0,0"/>
-
-                            <TextBlock x:Name="RefreshRateLabel" Text="Refresh rate" Style="{StaticResource FieldLabel}" Margin="0,14,0,8"/>
-                            <Border x:Name="RefreshRateTrack" Background="{DynamicResource TrackBrush}" CornerRadius="9" HorizontalAlignment="Left">
-                                <StackPanel x:Name="RefreshRateOptionsPanel" Orientation="Horizontal"/>
-                            </Border>
-                            <TextBlock x:Name="RefreshRateStatusText" TextWrapping="Wrap" FontSize="11" Margin="0,6,0,0"
-                                       Foreground="{DynamicResource TextSecondaryBrush}" Visibility="Collapsed"/>
-
-                            <TextBlock Text="Tip: press Ctrl+Alt+F12 anywhere to cycle performance mode" FontSize="11"
-                                       Foreground="{DynamicResource TextSecondaryBrush}" Margin="0,14,0,0"/>
-                        </StackPanel>
-                    </Border>
-
-                    <!-- Games -->
-                    <Border Style="{StaticResource Card}">
-                        <StackPanel>
-                            <TextBlock Text="Games" Style="{StaticResource SectionHeader}"/>
-                            <TextBlock TextWrapping="Wrap" FontSize="11" Margin="0,0,0,12"
-                                       Foreground="{DynamicResource TextSecondaryBrush}"
-                                       Text="Pick a mode, refresh rate and FPS cap for each game. Mode, refresh rate and max fan apply while the game runs and are put back when it closes; the FPS cap is stored in the NVIDIA driver, the same as Control Panel's Max Frame Rate."/>
-
-                            <Grid>
-                                <Grid.ColumnDefinitions>
-                                    <ColumnDefinition Width="*"/>
-                                    <ColumnDefinition Width="Auto"/>
-                                </Grid.ColumnDefinitions>
-                                <Button Grid.Column="0" Content="Scan for games" Style="{StaticResource PrimaryButton}"
-                                        Margin="0,0,8,0" Click="ScanForGamesButton_Click"/>
-                                <Button x:Name="BrowseForGameButton" Grid.Column="1" Content="Add game..." Style="{StaticResource SecondaryButton}"
-                                        Padding="14,10" Click="BrowseForGameButton_Click"/>
-                            </Grid>
-                            <TextBlock x:Name="GameScanStatusText" TextWrapping="Wrap" FontSize="11" Margin="0,10,0,0"
-                                       Foreground="{DynamicResource TextSecondaryBrush}" Visibility="Collapsed"/>
-
-                            <TextBlock x:Name="NoGameProfilesText" Text="No games yet. Scan to find your Steam and Epic games." FontSize="12"
-                                       Foreground="{DynamicResource TextSecondaryBrush}" Margin="0,14,0,0"/>
-                            <StackPanel x:Name="GameProfilesListPanel" Margin="0,14,0,0"/>
-                        </StackPanel>
-                    </Border>
-
-                    <!-- Fan speed control -->
-                    <Border Style="{StaticResource Card}">
-                        <StackPanel>
-                            <TextBlock Text="Fan speed" Style="{StaticResource SectionHeader}"/>
-
-                            <Grid Margin="0,0,0,14">
-                                <Grid.ColumnDefinitions>
-                                    <ColumnDefinition Width="*"/>
-                                    <ColumnDefinition Width="*"/>
-                                </Grid.ColumnDefinitions>
-                                <StackPanel Grid.Column="0">
-                                    <TextBlock Text="CPU FAN" Style="{StaticResource StatLabel}"/>
-                                    <TextBlock x:Name="CpuFanText" Text="-- RPM" Style="{StaticResource StatValue}"/>
-                                </StackPanel>
-                                <StackPanel Grid.Column="1">
-                                    <TextBlock Text="GPU FAN" Style="{StaticResource StatLabel}"/>
-                                    <TextBlock x:Name="GpuFanText" Text="-- RPM" Style="{StaticResource StatValue}"/>
-                                </StackPanel>
-                            </Grid>
-                            <Border Height="1" Background="{DynamicResource BorderBrush2}" Margin="0,0,0,14"/>
-
-                            <CheckBox x:Name="ManualCheckBox" Content="Manual fan speed" Style="{StaticResource ModernCheckBox}"
-                                      Checked="ManualCheckBox_Changed" Unchecked="ManualCheckBox_Changed"/>
-
-                            <Grid Margin="0,14,0,0" IsEnabled="{Binding ElementName=ManualCheckBox, Path=IsChecked}">
-                                <Grid.ColumnDefinitions>
-                                    <ColumnDefinition Width="40"/>
-                                    <ColumnDefinition Width="*"/>
-                                    <ColumnDefinition Width="30"/>
-                                </Grid.ColumnDefinitions>
-                                <Grid.RowDefinitions>
-                                    <RowDefinition Height="Auto"/>
-                                    <RowDefinition Height="Auto"/>
-                                </Grid.RowDefinitions>
-
-                                <TextBlock Grid.Row="0" Grid.Column="0" Text="CPU" Style="{StaticResource FieldLabel}"/>
-                                <Slider x:Name="CpuFanSlider" Grid.Row="0" Grid.Column="1" Minimum="0" Maximum="60"
-                                        Margin="10,0" Style="{StaticResource ModernSlider}" ValueChanged="FanSlider_ValueChanged"/>
-                                <TextBlock x:Name="CpuFanSliderText" Grid.Row="0" Grid.Column="2" Text="0" Style="{StaticResource FieldValue}"/>
-
-                                <TextBlock Grid.Row="1" Grid.Column="0" Text="GPU" Style="{StaticResource FieldLabel}" Margin="0,14,0,0"/>
-                                <Slider x:Name="GpuFanSlider" Grid.Row="1" Grid.Column="1" Minimum="0" Maximum="60"
-                                        Margin="10,14,10,0" Style="{StaticResource ModernSlider}" ValueChanged="FanSlider_ValueChanged"/>
-                                <TextBlock x:Name="GpuFanSliderText" Grid.Row="1" Grid.Column="2" Text="0" Style="{StaticResource FieldValue}" Margin="0,14,0,0"/>
-                            </Grid>
-
-                            <Button x:Name="ApplyFanButton" Content="Apply fan speed" Style="{StaticResource PrimaryButton}"
-                                    Margin="0,16,0,0" IsEnabled="False" Click="ApplyFanButton_Click"/>
-
-                            <Border Height="1" Background="{DynamicResource BorderBrush2}" Margin="0,16,0,16"/>
-
-                            <CheckBox x:Name="AutoFanCheckBox" Content="Auto fan by temperature" Style="{StaticResource GlowToggle}"
-                                      Checked="AutoFanCheckBox_Changed" Unchecked="AutoFanCheckBox_Changed"/>
-                            <TextBlock Text="Ramps CPU/GPU fan speed with their own temperature instead of the BIOS's built-in curve"
-                                       FontSize="11" Foreground="{DynamicResource TextSecondaryBrush}" Margin="26,3,0,0" TextWrapping="Wrap"/>
-
-                            <Border Height="1" Background="{DynamicResource BorderBrush2}" Margin="0,16,0,16"/>
-
-                            <CheckBox x:Name="MaxFanCheckBox" Content="Force max fan speed" Style="{StaticResource GlowToggle}"
-                                      Checked="MaxFanCheckBox_Changed" Unchecked="MaxFanCheckBox_Changed"/>
-                        </StackPanel>
-                    </Border>
+                        <TextBlock x:Name="NoGameProfilesText" Text="No games yet. Scan to find your Steam and Epic games." FontSize="12"
+                                   Foreground="{DynamicResource TextSecondaryBrush}" Margin="4,0,0,14"/>
+                        <!-- One card per game, two per row when there's room (see GameProfilesListPanel_SizeChanged).
+                             The negative margin cancels the cards' own side gutters so their edges line up with the header. -->
+                        <UniformGrid x:Name="GameProfilesListPanel" Columns="2" Margin="-7,0" VerticalAlignment="Top"
+                                     SizeChanged="GameProfilesListPanel_SizeChanged"/>
+                    </StackPanel>
 
                 </StackPanel>
 
                 <!-- ===================== Drivers tab ===================== -->
                 <StackPanel x:Name="DriversTabPanel" Visibility="Collapsed">
 
-                    <!-- Driver & BIOS updates -->
+                    <!-- Summary: what was found, when, and the check button -->
+                    <Border Style="{StaticResource Card}">
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="Auto"/>
+                            </Grid.ColumnDefinitions>
+                            <StackPanel VerticalAlignment="Center">
+                                <TextBlock x:Name="UpdatesTitleText" Text="Driver &amp; BIOS updates" Style="{StaticResource SectionHeader}" Margin="0,0,0,4"/>
+                                <TextBlock x:Name="UpdatesStatusText" TextWrapping="Wrap" FontSize="11"
+                                           Foreground="{DynamicResource TextSecondaryBrush}"
+                                           Text="Looks up real updates for this exact laptop from HP, NVIDIA and Intel — nothing is installed automatically."/>
+                                <TextBlock x:Name="LastCheckedText" TextWrapping="Wrap" FontSize="11" Margin="0,2,0,0"
+                                           Foreground="{DynamicResource TextSecondaryBrush}" Visibility="Collapsed"/>
+                            </StackPanel>
+                            <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center" Margin="16,0,0,0">
+                                <Button Content="Open downloads folder" Style="{StaticResource SecondaryButton}"
+                                        Padding="14,8" Margin="0,0,8,0" Click="OpenDownloadsFolderButton_Click"/>
+                                <Button x:Name="CheckUpdatesButton" Content="Check for updates" Style="{StaticResource PrimaryButton}"
+                                        Padding="16,8" Click="CheckUpdatesButton_Click"/>
+                            </StackPanel>
+                        </Grid>
+                    </Border>
+
+                    <!-- Updates table: click a column header to sort -->
+                    <Border x:Name="UpdatesTableCard" Style="{StaticResource Card}" Visibility="Collapsed">
+                        <StackPanel>
+                            <Grid x:Name="BulkActionsBar" Margin="0,0,0,10">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="Auto"/>
+                                    <ColumnDefinition Width="Auto"/>
+                                </Grid.ColumnDefinitions>
+                                <TextBlock x:Name="SelectionSummaryText" FontSize="11" VerticalAlignment="Center" TextWrapping="Wrap"
+                                           Foreground="{DynamicResource TextSecondaryBrush}"/>
+                                <Button x:Name="DownloadSelectedButton" Grid.Column="1" Content="Download selected" Style="{StaticResource SecondaryButton}"
+                                        Padding="12,6" Margin="12,0,8,0" IsEnabled="False" Click="DownloadSelectedButton_Click"/>
+                                <Button x:Name="InstallSelectedButton" Grid.Column="2" Content="Install selected" Style="{StaticResource PrimaryButton}"
+                                        Padding="12,6" IsEnabled="False" Click="InstallSelectedButton_Click"/>
+                            </Grid>
+
+                            <Border BorderBrush="{DynamicResource BorderBrush2}" BorderThickness="0,0,0,1" Padding="0,0,0,8">
+                                <Grid x:Name="UpdatesHeaderGrid">
+                                    <CheckBox x:Name="SelectAllCheckBox" Grid.Column="0" Style="{StaticResource ModernCheckBox}" ToolTip="Select all"
+                                              VerticalAlignment="Center" Checked="SelectAllCheckBox_Changed" Unchecked="SelectAllCheckBox_Changed"/>
+                                    <TextBlock x:Name="NameHeaderText" Grid.Column="1" Tag="Name" Style="{StaticResource TableHeaderText}"
+                                               MouseLeftButtonUp="UpdatesHeader_Click"/>
+                                    <TextBlock x:Name="TypeHeaderText" Grid.Column="2" Tag="Type" Style="{StaticResource TableHeaderText}"
+                                               MouseLeftButtonUp="UpdatesHeader_Click"/>
+                                    <TextBlock x:Name="VersionHeaderText" Grid.Column="3" Tag="Version" Style="{StaticResource TableHeaderText}"
+                                               MouseLeftButtonUp="UpdatesHeader_Click"/>
+                                    <TextBlock x:Name="SizeHeaderText" Grid.Column="4" Tag="Size" Style="{StaticResource TableHeaderText}"
+                                               MouseLeftButtonUp="UpdatesHeader_Click"/>
+                                    <TextBlock x:Name="ReleasedHeaderText" Grid.Column="5" Tag="Released" Style="{StaticResource TableHeaderText}"
+                                               MouseLeftButtonUp="UpdatesHeader_Click"/>
+                                </Grid>
+                            </Border>
+
+                            <StackPanel x:Name="UpdatesListPanel" SizeChanged="UpdatesListPanel_SizeChanged"/>
+                        </StackPanel>
+                    </Border>
+                </StackPanel>
+
+                <!-- ===================== System tab ===================== -->
+                <StackPanel x:Name="SystemTabPanel" Visibility="Collapsed">
+
+                    <!-- This laptop -->
                     <Border Style="{StaticResource Card}">
                         <StackPanel>
-                            <TextBlock Text="Driver &amp; BIOS updates" Style="{StaticResource SectionHeader}"/>
-                            <TextBlock x:Name="UpdatesStatusText" TextWrapping="Wrap" FontSize="11" Margin="0,0,0,4"
-                                       Foreground="{DynamicResource TextSecondaryBrush}"
-                                       Text="Looks up real updates for this exact laptop from HP's own support site — nothing is installed automatically."/>
-                            <TextBlock x:Name="LastCheckedText" TextWrapping="Wrap" FontSize="11" Margin="0,0,0,10"
-                                       Foreground="{DynamicResource TextSecondaryBrush}" Visibility="Collapsed"/>
                             <Grid>
                                 <Grid.ColumnDefinitions>
                                     <ColumnDefinition Width="*"/>
                                     <ColumnDefinition Width="Auto"/>
                                 </Grid.ColumnDefinitions>
-                                <Button x:Name="CheckUpdatesButton" Grid.Column="0" Content="Check for updates"
-                                        Style="{StaticResource PrimaryButton}" Margin="0,0,8,0" Click="CheckUpdatesButton_Click"/>
-                                <Button Grid.Column="1" Content="Open downloads folder" Style="{StaticResource SecondaryButton}"
-                                        Padding="12,10" Click="OpenDownloadsFolderButton_Click"/>
+                                <StackPanel VerticalAlignment="Center">
+                                    <TextBlock Text="This laptop" Style="{StaticResource SectionHeader}" Margin="0,0,0,4"/>
+                                    <TextBlock x:Name="SystemInfoStatusText" Text="Reading system details…" FontSize="11"
+                                               Foreground="{DynamicResource TextSecondaryBrush}" TextWrapping="Wrap"/>
+                                </StackPanel>
+                                <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center" Margin="16,0,0,0">
+                                    <Button Content="Check warranty" Style="{StaticResource SecondaryButton}" Padding="14,8" Margin="0,0,8,0"
+                                            ToolTip="Opens HP's warranty check page" Click="CheckWarrantyButton_Click"/>
+                                    <Button x:Name="CopySystemInfoButton" Content="Copy details" Style="{StaticResource PrimaryButton}" Padding="16,8"
+                                            IsEnabled="False" Click="CopySystemInfoButton_Click"/>
+                                </StackPanel>
                             </Grid>
+                            <Grid x:Name="SystemInfoGrid" Margin="0,12,0,0"/>
+                        </StackPanel>
+                    </Border>
 
-                            <Grid x:Name="SortBar" Margin="0,14,0,0" Visibility="Collapsed">
+                    <!-- Battery health -->
+                    <Border x:Name="BatteryHealthCard" Style="{StaticResource Card}">
+                        <StackPanel>
+                            <TextBlock Text="Battery health" Style="{StaticResource SectionHeader}"/>
+                            <Grid>
                                 <Grid.ColumnDefinitions>
                                     <ColumnDefinition Width="Auto"/>
                                     <ColumnDefinition Width="*"/>
                                 </Grid.ColumnDefinitions>
-                                <TextBlock Grid.Column="0" Text="Sort by" Style="{StaticResource FieldLabel}"
-                                           VerticalAlignment="Center" Margin="0,0,10,0"/>
-                                <Border Grid.Column="1" Background="{DynamicResource TrackBrush}" CornerRadius="9" HorizontalAlignment="Left">
-                                    <StackPanel Orientation="Horizontal">
-                                        <RadioButton x:Name="SortByDateRadio" Content="Newest" GroupName="SortMode"
-                                                     Style="{StaticResource SegmentRadio}" IsChecked="True" Checked="SortMode_Changed"/>
-                                        <RadioButton x:Name="SortByTypeRadio" Content="Type" GroupName="SortMode"
-                                                     Style="{StaticResource SegmentRadio}" Checked="SortMode_Changed"/>
-                                    </StackPanel>
-                                </Border>
+                                <TextBlock x:Name="BatteryHealthPercentText" Text="--%" Style="{StaticResource HeroStatValue}"
+                                           Margin="0,0,18,0" VerticalAlignment="Center"/>
+                                <StackPanel Grid.Column="1" VerticalAlignment="Center">
+                                    <TextBlock x:Name="BatteryHealthSummaryText" Text="Reading the battery report…" FontSize="13"
+                                               Foreground="{DynamicResource TextPrimaryBrush}" TextWrapping="Wrap"/>
+                                    <TextBlock x:Name="BatteryHealthDetailText" FontSize="11" Margin="0,3,0,0" TextWrapping="Wrap"
+                                               Foreground="{DynamicResource TextSecondaryBrush}"/>
+                                </StackPanel>
                             </Grid>
+                            <Grid Height="8" Margin="0,14,0,0">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition x:Name="BatteryHealthFillColumn" Width="0*"/>
+                                    <ColumnDefinition x:Name="BatteryHealthRestColumn" Width="1*"/>
+                                </Grid.ColumnDefinitions>
+                                <Border Grid.ColumnSpan="2" CornerRadius="4" Background="{DynamicResource TrackBrush}"/>
+                                <Border x:Name="BatteryHealthBar" CornerRadius="4" Background="{DynamicResource AccentBrush}"/>
+                            </Grid>
+                            <TextBlock x:Name="BatteryHealthAdviceText" FontSize="11" Margin="0,12,0,0" TextWrapping="Wrap"
+                                       Foreground="{DynamicResource TextSecondaryBrush}" Visibility="Collapsed"/>
+                        </StackPanel>
+                    </Border>
 
-                            <Grid x:Name="BulkActionsBar" Margin="0,10,0,0" Visibility="Collapsed">
+                    <!-- Graphics mode (BIOS graphics switch / MUX) -->
+                    <Border Style="{StaticResource Card}">
+                        <StackPanel>
+                            <TextBlock Text="Graphics mode" Style="{StaticResource SectionHeader}"/>
+                            <TextBlock x:Name="GraphicsModeStatusText" Text="Checking the BIOS…" FontSize="12" TextWrapping="Wrap"
+                                       Foreground="{DynamicResource TextSecondaryBrush}"/>
+                            <Border x:Name="GraphicsModeTrack" Background="{DynamicResource TrackBrush}" CornerRadius="9"
+                                    HorizontalAlignment="Left" Margin="0,12,0,0" Visibility="Collapsed">
+                                <StackPanel Orientation="Horizontal">
+                                    <RadioButton x:Name="HybridGpuRadio" Content="Hybrid" GroupName="GpuMode" Style="{StaticResource SegmentRadio}"
+                                                 Padding="16,7" Checked="GpuModeRadio_Checked"
+                                                 ToolTip="Intel GPU drives the screen, NVIDIA renders games. Longer battery life."/>
+                                    <RadioButton x:Name="DiscreteGpuRadio" Content="NVIDIA only" GroupName="GpuMode" Style="{StaticResource SegmentRadio}"
+                                                 Padding="16,7" Checked="GpuModeRadio_Checked"
+                                                 ToolTip="NVIDIA GPU drives the screen directly. More fps, shorter battery life."/>
+                                </StackPanel>
+                            </Border>
+                            <TextBlock x:Name="GraphicsModeHintText" FontSize="11" Margin="0,10,0,0" TextWrapping="Wrap"
+                                       Foreground="{DynamicResource TextSecondaryBrush}" Visibility="Collapsed"/>
+                            <Button x:Name="RestartNowButton" Content="Restart now" Style="{StaticResource SecondaryButton}"
+                                    Padding="16,8" Margin="0,10,0,0" HorizontalAlignment="Left" Visibility="Collapsed"
+                                    Click="RestartNowButton_Click"/>
+                        </StackPanel>
+                    </Border>
+
+                    <!-- Maintenance -->
+                    <Border Style="{StaticResource Card}">
+                        <StackPanel>
+                            <TextBlock Text="Maintenance" Style="{StaticResource SectionHeader}"/>
+
+                            <Grid>
                                 <Grid.ColumnDefinitions>
                                     <ColumnDefinition Width="*"/>
                                     <ColumnDefinition Width="Auto"/>
+                                </Grid.ColumnDefinitions>
+                                <StackPanel VerticalAlignment="Center" Margin="0,0,12,0">
+                                    <TextBlock Text="Fan test" FontSize="13" Foreground="{DynamicResource TextPrimaryBrush}"/>
+                                    <TextBlock Text="Runs both fans at full speed for 15 seconds and checks they spin up properly" FontSize="11"
+                                               Margin="0,2,0,0" TextWrapping="Wrap" Foreground="{DynamicResource TextSecondaryBrush}"/>
+                                </StackPanel>
+                                <Button x:Name="FanTestButton" Grid.Column="1" Content="Test fans" Style="{StaticResource SecondaryButton}"
+                                        MinWidth="130" Padding="14,8" Click="FanTestButton_Click"/>
+                            </Grid>
+                            <TextBlock x:Name="FanTestResultText" FontSize="12" Margin="0,10,0,0" TextWrapping="Wrap" LineHeight="20"
+                                       Foreground="{DynamicResource TextPrimaryBrush}" Visibility="Collapsed"/>
+
+                            <Border Height="1" Background="{DynamicResource BorderBrush2}" Margin="0,14,0,14"/>
+
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*"/>
                                     <ColumnDefinition Width="Auto"/>
                                 </Grid.ColumnDefinitions>
-                                <CheckBox x:Name="SelectAllCheckBox" Grid.Column="0" Content="Select all" Style="{StaticResource ModernCheckBox}"
-                                          VerticalAlignment="Center" Checked="SelectAllCheckBox_Changed" Unchecked="SelectAllCheckBox_Changed"/>
-                                <Button x:Name="DownloadSelectedButton" Grid.Column="1" Content="Download selected" Style="{StaticResource SecondaryButton}"
-                                        Padding="12,6" Margin="0,0,8,0" IsEnabled="False" Click="DownloadSelectedButton_Click"/>
-                                <Button x:Name="InstallSelectedButton" Grid.Column="2" Content="Install selected" Style="{StaticResource PrimaryButton}"
-                                        Padding="12,6" IsEnabled="False" Click="InstallSelectedButton_Click"/>
+                                <StackPanel VerticalAlignment="Center" Margin="0,0,12,0">
+                                    <TextBlock Text="Shader cache" FontSize="13" Foreground="{DynamicResource TextPrimaryBrush}"/>
+                                    <TextBlock x:Name="ShaderCacheSizeText" Text="Measuring…" FontSize="11" Margin="0,2,0,0" TextWrapping="Wrap"
+                                               Foreground="{DynamicResource TextSecondaryBrush}"/>
+                                </StackPanel>
+                                <Button x:Name="ClearShaderCacheButton" Grid.Column="1" Content="Clear" Style="{StaticResource SecondaryButton}"
+                                        MinWidth="130" Padding="14,8" IsEnabled="False" Click="ClearShaderCacheButton_Click"/>
                             </Grid>
 
-                            <StackPanel x:Name="UpdatesListPanel" Margin="0,4,0,0"/>
+                            <Border Height="1" Background="{DynamicResource BorderBrush2}" Margin="0,14,0,14"/>
+
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="Auto"/>
+                                </Grid.ColumnDefinitions>
+                                <StackPanel VerticalAlignment="Center" Margin="0,0,12,0">
+                                    <TextBlock Text="Driver downloads" FontSize="13" Foreground="{DynamicResource TextPrimaryBrush}"/>
+                                    <TextBlock x:Name="DriverDownloadsSizeText" Text="Measuring…" FontSize="11" Margin="0,2,0,0" TextWrapping="Wrap"
+                                               Foreground="{DynamicResource TextSecondaryBrush}"/>
+                                </StackPanel>
+                                <Button x:Name="CleanDriverDownloadsButton" Grid.Column="1" Content="Clean up" Style="{StaticResource SecondaryButton}"
+                                        MinWidth="130" Padding="14,8" IsEnabled="False" Click="CleanDriverDownloadsButton_Click"/>
+                            </Grid>
+                            <CheckBox x:Name="AutoCleanDownloadsCheckBox" Content="Clean up automatically" Style="{StaticResource GlowToggle}"
+                                      Margin="0,12,0,0" Checked="AutoCleanDownloadsCheckBox_Changed" Unchecked="AutoCleanDownloadsCheckBox_Changed"/>
+                            <TextBlock Text="Deletes each installer once it has installed successfully, and any left over for 30 days" FontSize="11"
+                                       Margin="0,3,0,0" TextWrapping="Wrap" Foreground="{DynamicResource TextSecondaryBrush}"/>
                         </StackPanel>
                     </Border>
                 </StackPanel>
@@ -691,6 +946,13 @@
                     <Border Style="{StaticResource Card}">
                         <StackPanel>
                             <TextBlock Text="Appearance" Style="{StaticResource SectionHeader}"/>
+                            <CheckBox x:Name="MatchWindowsThemeCheckBox" Content="Match Windows' light or dark theme" Style="{StaticResource GlowToggle}"
+                                      Checked="MatchWindowsThemeCheckBox_Changed" Unchecked="MatchWindowsThemeCheckBox_Changed"/>
+                            <TextBlock Text="Switches along with Windows (Settings → Personalization → Colors)" FontSize="11"
+                                       Foreground="{DynamicResource TextSecondaryBrush}" Margin="0,3,0,0"/>
+
+                            <Border Height="1" Background="{DynamicResource BorderBrush2}" Margin="0,14,0,14"/>
+
                             <CheckBox x:Name="DarkThemeCheckBox" Content="Dark theme" Style="{StaticResource GlowToggle}"
                                       Checked="DarkThemeCheckBox_Changed" Unchecked="DarkThemeCheckBox_Changed"/>
 
@@ -712,6 +974,52 @@
                                        Text="Stops the audio chip powering down after a few seconds of silence, which makes the next sound (like a UAC prompt's) start late. Uses a little more battery, and a Realtek driver update may undo it."/>
                             <TextBlock x:Name="SpeakerAwakeStatusText" TextWrapping="Wrap" FontSize="11" Margin="0,8,0,0"
                                        Foreground="{DynamicResource AccentBrush}" Visibility="Collapsed"/>
+                        </StackPanel>
+                    </Border>
+
+                    <!-- Keyboard shortcuts -->
+                    <Border Style="{StaticResource Card}">
+                        <StackPanel>
+                            <TextBlock Text="Keyboard shortcuts" Style="{StaticResource SectionHeader}" Margin="0,0,0,4"/>
+                            <TextBlock TextWrapping="Wrap" FontSize="11" Margin="0,0,0,6" Foreground="{DynamicResource TextSecondaryBrush}"
+                                       Text="These work anywhere, even in a game. Click a shortcut, then press the new keys — it needs Ctrl, Alt or Win. Backspace turns it off, Esc cancels."/>
+
+                            <Grid Margin="0,8,0,0">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="Auto"/>
+                                </Grid.ColumnDefinitions>
+                                <StackPanel VerticalAlignment="Center">
+                                    <TextBlock Text="Toggle max fan" FontSize="13" Foreground="{DynamicResource TextPrimaryBrush}"/>
+                                    <TextBlock Text="Turns max fan speed on or off" FontSize="11" Margin="0,2,0,0"
+                                               Foreground="{DynamicResource TextSecondaryBrush}"/>
+                                </StackPanel>
+                                <Button x:Name="MaxFanHotkeyButton" Grid.Column="1" Tag="MaxFan" Style="{StaticResource SecondaryButton}"
+                                        MinWidth="160" Padding="14,8" Margin="12,0,0,0"
+                                        Click="HotkeyButton_Click" PreviewKeyDown="HotkeyButton_PreviewKeyDown"
+                                        PreviewKeyUp="HotkeyButton_PreviewKeyUp" LostKeyboardFocus="HotkeyButton_LostKeyboardFocus"/>
+                            </Grid>
+
+                            <Border Height="1" Background="{DynamicResource BorderBrush2}" Margin="0,12,0,12"/>
+
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="Auto"/>
+                                </Grid.ColumnDefinitions>
+                                <StackPanel VerticalAlignment="Center">
+                                    <TextBlock Text="Cycle performance mode" FontSize="13" Foreground="{DynamicResource TextPrimaryBrush}"/>
+                                    <TextBlock Text="Balanced → Performance → Cool" FontSize="11" Margin="0,2,0,0"
+                                               Foreground="{DynamicResource TextSecondaryBrush}"/>
+                                </StackPanel>
+                                <Button x:Name="CycleModeHotkeyButton" Grid.Column="1" Tag="CycleMode" Style="{StaticResource SecondaryButton}"
+                                        MinWidth="160" Padding="14,8" Margin="12,0,0,0"
+                                        Click="HotkeyButton_Click" PreviewKeyDown="HotkeyButton_PreviewKeyDown"
+                                        PreviewKeyUp="HotkeyButton_PreviewKeyUp" LostKeyboardFocus="HotkeyButton_LostKeyboardFocus"/>
+                            </Grid>
+
+                            <TextBlock x:Name="HotkeyStatusText" TextWrapping="Wrap" FontSize="11" Margin="0,10,0,0"
+                                       Foreground="{DynamicResource TextSecondaryBrush}" Visibility="Collapsed"/>
                         </StackPanel>
                     </Border>
 

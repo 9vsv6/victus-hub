@@ -21,6 +21,7 @@ using MessageBox = System.Windows.MessageBox;
 using Orientation = System.Windows.Controls.Orientation;
 using SolidColorBrush = System.Windows.Media.SolidColorBrush;
 using TextBox = System.Windows.Controls.TextBox;
+using KeyEventArgs = System.Windows.Input.KeyEventArgs;
 
 namespace HpVictusControl;
 
@@ -40,12 +41,18 @@ public partial class MainWindow : Window {
         InitializeComponent();
 
         if (_settings.LastTab == "Drivers") DriversTabRadio.IsChecked = true;
+        else if (_settings.LastTab == "System") SystemTabRadio.IsChecked = true;
         else if (_settings.LastTab == "Settings") SettingsTabRadio.IsChecked = true;
+        if (_settings.LastSection == "Games") GamesSectionRadio.IsChecked = true;
 
         RestoreWindowBounds();
 
         ApplyTheme(_settings.DarkTheme);
         DarkThemeCheckBox.IsChecked = _settings.DarkTheme;
+        MatchWindowsThemeCheckBox.IsChecked = _settings.MatchWindowsTheme;
+        TuneWifiCheckBox.IsChecked = _settings.TuneWifiForGames;
+        AutoCleanDownloadsCheckBox.IsChecked = _settings.AutoCleanDriverDownloads;
+        Microsoft.Win32.SystemEvents.UserPreferenceChanged += SystemEvents_UserPreferenceChanged;
         TempAlertCheckBox.IsChecked = _settings.TempAlertsEnabled;
         TempAlertSlider.Value = _settings.TempAlertThreshold;
         ExitOnCloseCheckBox.IsChecked = _settings.ExitOnClose;
@@ -97,7 +104,7 @@ public partial class MainWindow : Window {
         DwmSetWindowAttribute(hwnd, DwmwaUseImmersiveDarkMode, ref useDark, sizeof(int));
     }
 
-    // ----- Global hotkey: Ctrl+Alt+F12 cycles performance mode from anywhere -----------------
+    // ----- Global hotkeys: cycle performance mode and toggle max fan from anywhere -----------
 
     [DllImport("user32.dll")]
     private static extern bool RegisterHotKey(IntPtr hWnd, int id, uint fsModifiers, uint vk);
@@ -106,27 +113,182 @@ public partial class MainWindow : Window {
     private static extern bool UnregisterHotKey(IntPtr hWnd, int id);
 
     private const int CycleModeHotkeyId = 0x4859;
-    private const uint ModControl = 0x0002;
-    private const uint ModAlt = 0x0001;
-    private const uint VkF12 = 0x7B;
+    private const int MaxFanHotkeyId = 0x485A;
     private const int WmHotkey = 0x0312;
 
+    private bool _hotkeyHookAdded;
+
+    private (int Id, string Name, string Setting)[] HotkeyDefinitions() => new[] {
+        (CycleModeHotkeyId, "cycle performance mode", _settings.CycleModeHotkey),
+        (MaxFanHotkeyId, "toggle max fan", _settings.MaxFanHotkey),
+    };
+
     private void RegisterCycleModeHotkey() {
-        try {
-            IntPtr hwnd = new WindowInteropHelper(this).Handle;
-            HwndSource.FromHwnd(hwnd)?.AddHook(HotkeyWndProc);
-            RegisterHotKey(hwnd, CycleModeHotkeyId, ModControl | ModAlt, VkF12);
-        } catch {
-            // Best-effort — another app may already own this key combination.
+        HashSet<int> failed = RegisterHotkeys();
+        if (failed.Count == 0) return;
+
+        IEnumerable<string> taken = HotkeyDefinitions().Where(d => failed.Contains(d.Id)).Select(d => $"{d.Setting} ({d.Name})");
+        ShowHotkeyStatus($"Another app already uses {string.Join(" and ", taken)}. Pick a different shortcut below.");
+    }
+
+    /// <summary>(Re)registers every configured shortcut and returns the ids Windows refused.</summary>
+    private HashSet<int> RegisterHotkeys() {
+        var failed = new HashSet<int>();
+        IntPtr hwnd = new WindowInteropHelper(this).Handle;
+        if (hwnd != IntPtr.Zero) {
+            if (!_hotkeyHookAdded) {
+                HwndSource.FromHwnd(hwnd)?.AddHook(HotkeyWndProc);
+                _hotkeyHookAdded = true;
+            }
+
+            UnregisterHotkeys();
+            foreach ((int id, _, string setting) in HotkeyDefinitions()) {
+                if (Hotkey.TryParse(setting, out Hotkey hotkey) && !RegisterHotKey(hwnd, id, hotkey.NativeModifiers, hotkey.VirtualKey))
+                    failed.Add(id);
+            }
         }
+
+        RefreshHotkeyDisplay();
+        return failed;
+    }
+
+    private void UnregisterHotkeys() {
+        IntPtr hwnd = new WindowInteropHelper(this).Handle;
+        if (hwnd == IntPtr.Zero) return;
+        UnregisterHotKey(hwnd, CycleModeHotkeyId);
+        UnregisterHotKey(hwnd, MaxFanHotkeyId);
     }
 
     private IntPtr HotkeyWndProc(IntPtr hwnd, int msg, IntPtr wParam, IntPtr lParam, ref bool handled) {
-        if (msg == WmHotkey && wParam.ToInt32() == CycleModeHotkeyId) {
-            CycleModeViaHotkey();
-            handled = true;
+        if (msg != WmHotkey) return IntPtr.Zero;
+
+        switch (wParam.ToInt32()) {
+            case CycleModeHotkeyId: CycleModeViaHotkey(); handled = true; break;
+            case MaxFanHotkeyId: ToggleMaxFanViaHotkey(); handled = true; break;
         }
         return IntPtr.Zero;
+    }
+
+    private void ToggleMaxFanViaHotkey() {
+        if (!_bios.IsAvailable || !MaxFanCheckBox.IsEnabled) return;
+
+        // The checkbox's own handler talks to the BIOS and keeps the tray menu in step.
+        bool enable = MaxFanCheckBox.IsChecked != true;
+        MaxFanCheckBox.IsChecked = enable;
+        _tray.ShowBalloon("HP Victus Control", enable ? "Max fan on" : "Max fan off");
+    }
+
+    private void RefreshHotkeyDisplay() {
+        bool cycleSet = Hotkey.TryParse(_settings.CycleModeHotkey, out Hotkey cycle);
+        bool maxFanSet = Hotkey.TryParse(_settings.MaxFanHotkey, out Hotkey maxFan);
+
+        if (_recordingHotkey != "CycleMode") CycleModeHotkeyButton.Content = cycleSet ? cycle.ToString() : "Off";
+        if (_recordingHotkey != "MaxFan") MaxFanHotkeyButton.Content = maxFanSet ? maxFan.ToString() : "Off";
+
+        CycleModeTipText.Text = $"Tip: press {cycle} anywhere to cycle performance mode";
+        CycleModeTipText.Visibility = cycleSet ? Visibility.Visible : Visibility.Collapsed;
+        MaxFanCheckBox.ToolTip = maxFanSet ? $"Shortcut: {maxFan}" : null;
+    }
+
+    // ----- Recording a new shortcut in Settings -----
+
+    // Which shortcut is waiting for keys ("CycleMode" / "MaxFan"), or null when none is.
+    private string? _recordingHotkey;
+
+    private void HotkeyButton_Click(object sender, RoutedEventArgs e) {
+        if (sender is not Button { Tag: string which } button) return;
+        if (_recordingHotkey == which) {
+            StopRecordingHotkey();
+            return;
+        }
+
+        StopRecordingHotkey();
+        _recordingHotkey = which;
+        // Registered shortcuts are swallowed before any window sees them, so release them while
+        // recording — otherwise pressing the current combo would just fire it.
+        UnregisterHotkeys();
+        button.Content = "Press keys…";
+        HotkeyStatusText.Visibility = Visibility.Collapsed;
+        Keyboard.Focus(button);
+    }
+
+    private void HotkeyButton_PreviewKeyDown(object sender, KeyEventArgs e) {
+        if (sender is not Button { Tag: string which } button || _recordingHotkey != which) return;
+        e.Handled = true;
+
+        Key key = e.Key switch { Key.System => e.SystemKey, Key.ImeProcessed => e.ImeProcessedKey, _ => e.Key };
+        ModifierKeys modifiers = Keyboard.Modifiers;
+
+        if (Hotkey.IsModifierKey(key)) {
+            button.Content = Hotkey.DescribePartial(modifiers);
+            return;
+        }
+        if (modifiers == ModifierKeys.None && key == Key.Escape) {
+            StopRecordingHotkey();
+            return;
+        }
+        if (modifiers == ModifierKeys.None && key is Key.Back or Key.Delete) {
+            SaveHotkey(which, "");
+            StopRecordingHotkey();
+            ShowHotkeyStatus("Shortcut turned off.");
+            return;
+        }
+
+        var hotkey = new Hotkey(modifiers, key);
+        if (!hotkey.HasRequiredModifier) {
+            ShowHotkeyStatus($"{hotkey} would block that key everywhere — hold Ctrl, Alt or Win as well.");
+            button.Content = "Press keys…";
+            return;
+        }
+
+        string other = which == "MaxFan" ? _settings.CycleModeHotkey : _settings.MaxFanHotkey;
+        if (Hotkey.TryParse(other, out Hotkey otherHotkey) && otherHotkey == hotkey) {
+            ShowHotkeyStatus($"{hotkey} is already the other shortcut.");
+            button.Content = "Press keys…";
+            return;
+        }
+
+        string previous = which == "MaxFan" ? _settings.MaxFanHotkey : _settings.CycleModeHotkey;
+        SaveHotkey(which, hotkey.ToString());
+        _recordingHotkey = null;
+
+        int id = which == "MaxFan" ? MaxFanHotkeyId : CycleModeHotkeyId;
+        if (RegisterHotkeys().Contains(id)) {
+            // Windows (or another app) owns that combination; keep the one that worked.
+            SaveHotkey(which, previous);
+            RegisterHotkeys();
+            ShowHotkeyStatus($"{hotkey} is already taken by Windows or another app. Try a different combination.");
+            return;
+        }
+        ShowHotkeyStatus($"Saved: {hotkey}");
+    }
+
+    // Keeps the "Ctrl+Alt+…" preview honest when a modifier is let go before the key is pressed.
+    private void HotkeyButton_PreviewKeyUp(object sender, KeyEventArgs e) {
+        if (sender is not Button { Tag: string which } button || _recordingHotkey != which) return;
+        e.Handled = true;
+        button.Content = Keyboard.Modifiers == ModifierKeys.None ? "Press keys…" : Hotkey.DescribePartial(Keyboard.Modifiers);
+    }
+
+    private void HotkeyButton_LostKeyboardFocus(object sender, KeyboardFocusChangedEventArgs e) {
+        if (sender is Button { Tag: string which } && _recordingHotkey == which) StopRecordingHotkey();
+    }
+
+    private void StopRecordingHotkey() {
+        if (_recordingHotkey == null) return;
+        _recordingHotkey = null;
+        RegisterHotkeys();
+    }
+
+    private void SaveHotkey(string which, string value) {
+        if (which == "MaxFan") _settings.MaxFanHotkey = value;
+        else _settings.CycleModeHotkey = value;
+        _settings.Save();
+    }
+
+    private void ShowHotkeyStatus(string text) {
+        HotkeyStatusText.Text = text;
+        HotkeyStatusText.Visibility = Visibility.Visible;
     }
 
     private void CycleModeViaHotkey() {
@@ -178,12 +340,91 @@ public partial class MainWindow : Window {
 
         PerformanceTabPanel.Visibility = PerformanceTabRadio.IsChecked == true ? Visibility.Visible : Visibility.Collapsed;
         DriversTabPanel.Visibility = DriversTabRadio.IsChecked == true ? Visibility.Visible : Visibility.Collapsed;
+        SystemTabPanel.Visibility = SystemTabRadio.IsChecked == true ? Visibility.Visible : Visibility.Collapsed;
         SettingsTabPanel.Visibility = SettingsTabRadio.IsChecked == true ? Visibility.Visible : Visibility.Collapsed;
+
+        if (SystemTabRadio.IsChecked == true && !_initializing) LoadSystemTab();
 
         if (_initializing) return;
         _settings.LastTab = DriversTabRadio.IsChecked == true ? "Drivers"
+            : SystemTabRadio.IsChecked == true ? "System"
             : SettingsTabRadio.IsChecked == true ? "Settings" : "Performance";
         _settings.Save();
+    }
+
+    private void PerformanceSection_Changed(object sender, RoutedEventArgs e) {
+        // Same InitializeComponent() ordering issue as TopTab_Changed: the IsChecked="True" radio
+        // fires before the section panels further down the XAML exist.
+        if (PerformanceSectionPanel == null || GamesSectionPanel == null) return;
+
+        bool games = GamesSectionRadio.IsChecked == true;
+        PerformanceSectionPanel.Visibility = games ? Visibility.Collapsed : Visibility.Visible;
+        GamesSectionPanel.Visibility = games ? Visibility.Visible : Visibility.Collapsed;
+
+        if (_initializing) return;
+        _settings.LastSection = games ? "Games" : "Performance";
+        _settings.Save();
+    }
+
+    // Two cards side by side need roughly 300px each; below that the fan sliders and the stat
+    // grid get cramped, so the cards stack instead.
+    private const double SideBySideMinWidth = 620;
+    private bool? _performanceColumnsSideBySide;
+
+    private void PerformanceColumnsGrid_SizeChanged(object sender, SizeChangedEventArgs e) {
+        bool sideBySide = e.NewSize.Width >= SideBySideMinWidth;
+        if (_performanceColumnsSideBySide == sideBySide) return;
+        _performanceColumnsSideBySide = sideBySide;
+
+        Grid.SetColumnSpan(LiveStatsCard, sideBySide ? 1 : 2);
+        LiveStatsCard.Margin = new Thickness(0, 0, sideBySide ? 7 : 0, 14);
+
+        Grid.SetRow(FanControlCard, sideBySide ? 0 : 1);
+        Grid.SetColumn(FanControlCard, sideBySide ? 1 : 0);
+        Grid.SetColumnSpan(FanControlCard, sideBySide ? 1 : 2);
+        FanControlCard.Margin = new Thickness(sideBySide ? 7 : 0, 0, 0, 14);
+    }
+
+    // The strip beside the section tabs, so temperatures and the active mode stay in view
+    // while you're on the Games list.
+    private void UpdateSectionStatus() {
+        SectionStatusText.Text = $"CPU {TemperatureText.Text}  ·  GPU {GpuTempText.Text}  ·  {_currentMode}";
+    }
+
+    // ----- Match Windows' theme -----
+
+    // Windows keeps the apps theme in AppsUseLightTheme (0 = dark); null if it can't be read.
+    private static bool? WindowsUsesDarkTheme() {
+        try {
+            using Microsoft.Win32.RegistryKey? key = Microsoft.Win32.Registry.CurrentUser.OpenSubKey(
+                @"Software\Microsoft\Windows\CurrentVersion\Themes\Personalize");
+            return key?.GetValue("AppsUseLightTheme") is int light ? light == 0 : null;
+        } catch {
+            return null;
+        }
+    }
+
+    private void MatchWindowsThemeCheckBox_Changed(object sender, RoutedEventArgs e) {
+        bool match = MatchWindowsThemeCheckBox.IsChecked == true;
+        DarkThemeCheckBox.IsEnabled = !match;
+        if (match) FollowWindowsTheme();
+
+        if (_initializing) return;
+        _settings.MatchWindowsTheme = match;
+        _settings.Save();
+    }
+
+    private void FollowWindowsTheme() {
+        // Going through the checkbox keeps one code path for applying and saving the theme.
+        if (WindowsUsesDarkTheme() is bool dark && DarkThemeCheckBox.IsChecked != dark) DarkThemeCheckBox.IsChecked = dark;
+    }
+
+    // Windows announces a light/dark switch as a "General" preference change.
+    private void SystemEvents_UserPreferenceChanged(object sender, Microsoft.Win32.UserPreferenceChangedEventArgs e) {
+        if (e.Category != Microsoft.Win32.UserPreferenceCategory.General) return;
+        Dispatcher.BeginInvoke(() => {
+            if (MatchWindowsThemeCheckBox.IsChecked == true) FollowWindowsTheme();
+        });
     }
 
     private void DarkThemeCheckBox_Changed(object sender, RoutedEventArgs e) {
@@ -193,6 +434,9 @@ public partial class MainWindow : Window {
         if (_initializing) return;
         _settings.DarkTheme = dark;
         _settings.Save();
+
+        // Type tags carry their own light/dark colours rather than theme resources.
+        if (_lastUpdates.Count > 0) RenderUpdateRows(_lastUpdates);
     }
 
     private void StartWithWindowsCheckBox_Changed(object sender, RoutedEventArgs e) {
@@ -363,6 +607,8 @@ public partial class MainWindow : Window {
         RefreshStats();
         _pollTimer.Start();
         _initializing = false;
+        if (SystemTabRadio.IsChecked == true) LoadSystemTab();
+        SweepOldDriverDownloads();
 
         // Applying these after _initializing is cleared so they go through the normal
         // handlers — disabling the mode radios/applying the current power source, and
@@ -410,6 +656,7 @@ public partial class MainWindow : Window {
             }
         }
         TemperatureText.Text = tempText;
+        UpdateSectionStatus();
         CheckTemperatureAlert("CPU", cpuTempValue, ref _cpuTempAlertActive);
         _lastCpuTempForFan = cpuTempValue;
         ApplyAutoFanCurve();
@@ -425,6 +672,30 @@ public partial class MainWindow : Window {
         }
 
         CheckGameProfiles();
+        KeepWindowsPowerPlanInSync();
+    }
+
+    // Windows' power plan can be changed by anything on the machine — another tuning tool, a
+    // Windows update, or a stray powercfg call — and the app would go on showing a mode it no
+    // longer has. Since the mode selector is what the user trusts, the plan is put back whenever
+    // it has drifted away from the selected mode. Reading the active plan is a cheap API call,
+    // and nothing is written unless it actually differs.
+    private bool _powerPlanChecked;
+    private DateTime _lastPowerPlanNotice = DateTime.MinValue;
+
+    private void KeepWindowsPowerPlanInSync() {
+        bool corrected = WindowsPowerPlan.EnsureActiveForMode(_currentMode);
+        bool firstCheck = !_powerPlanChecked;
+        _powerPlanChecked = true;
+
+        // The first check of a session is just the app catching up with whatever the machine was
+        // left on — normal, and not worth a notification. After that, a drift means something is
+        // quietly undoing the chosen mode, which is worth saying out loud — but only occasionally,
+        // in case whatever changed it keeps changing it back.
+        if (!corrected || firstCheck || DateTime.UtcNow - _lastPowerPlanNotice < TimeSpan.FromMinutes(5)) return;
+
+        _lastPowerPlanNotice = DateTime.UtcNow;
+        _tray.ShowBalloon("HP Victus Control", $"Windows' power plan had changed — put it back to {_currentMode} mode");
     }
 
     private void RefreshBatteryStatus() {
@@ -470,6 +741,7 @@ public partial class MainWindow : Window {
         _gpuStatsQueryInFlight = false;
 
         GpuTempText.Text = temperature.HasValue ? $"{temperature.Value:0}°C" : "N/A";
+        UpdateSectionStatus();
         GpuUsageText.Text = utilization.HasValue ? $"{utilization.Value:0}%" : "N/A";
 
         if (powerDraw.HasValue || clockMhz.HasValue) {
@@ -502,6 +774,7 @@ public partial class MainWindow : Window {
             _bios.SetFanMode(mode);
             _currentMode = mode;
             _tray.SetActiveMode(mode);
+            UpdateSectionStatus();
 
             _settings.PerformanceMode = mode.ToString();
             _settings.Save();
@@ -636,6 +909,7 @@ public partial class MainWindow : Window {
     private void SetActiveModeRadio(HpFanMode mode) {
         _currentMode = mode;
         _tray.SetActiveMode(mode);
+        UpdateSectionStatus();
 
         // Setting IsChecked=true raises the Checked event below, which calls ApplyMode()
         // itself once (skipped during startup init) — don't call it again here.
@@ -761,7 +1035,7 @@ public partial class MainWindow : Window {
     };
 
     private void ApplyAutoFanCurve() {
-        if (AutoFanCheckBox.IsChecked != true) return;
+        if (AutoFanCheckBox.IsChecked != true || _fanTestRunning) return;
 
         byte cpuLevel = _lastCpuTempForFan.HasValue ? FanLevelForTemperature(_lastCpuTempForFan.Value) : (byte)27;
         byte gpuLevel = _lastGpuTempForFan.HasValue ? FanLevelForTemperature(_lastGpuTempForFan.Value) : cpuLevel;
@@ -807,8 +1081,7 @@ public partial class MainWindow : Window {
 
     private void OpenDownloadsFolderButton_Click(object sender, RoutedEventArgs e) {
         try {
-            string folder = Path.Combine(
-                Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments), "HP Victus Control", "Downloads");
+            string folder = Maintenance.DriverDownloadsFolder;
             Directory.CreateDirectory(folder);
             Process.Start(new ProcessStartInfo(folder) { UseShellExecute = true });
         } catch {
@@ -821,8 +1094,8 @@ public partial class MainWindow : Window {
         UpdatesListPanel.Children.Clear();
         _updateEntries.Clear();
         _lastUpdates = new List<HpDriverUpdate>();
-        SortBar.Visibility = Visibility.Collapsed;
-        BulkActionsBar.Visibility = Visibility.Collapsed;
+        UpdatesTableCard.Visibility = Visibility.Collapsed;
+        UpdatesTitleText.Text = "Driver & BIOS updates";
         UpdatesStatusText.Text = "Checking HP's support site for your exact model...";
 
         try {
@@ -843,14 +1116,15 @@ public partial class MainWindow : Window {
                 .Select(match => $"{match.DeviceName} {match.InstalledVersion}"));
 
             if (updates.Count == 0) {
-                UpdatesStatusText.Text = "You're up to date — no newer drivers or BIOS found for this model."
+                UpdatesTitleText.Text = "You're up to date";
+                UpdatesStatusText.Text = "No newer drivers or BIOS found for this model."
                     + (intelCurrent.Length > 0 ? $" Intel confirms its latest is installed: {intelCurrent}." : "");
             } else {
                 _lastUpdates = updates;
-                UpdatesStatusText.Text = $"{updates.Count} update(s) available:";
+                UpdatesTitleText.Text = updates.Count == 1 ? "1 update available" : $"{updates.Count} updates available";
+                UpdatesStatusText.Text = DescribeUpdateMix(updates);
                 RenderUpdateRows(updates);
-                SortBar.Visibility = Visibility.Visible;
-                BulkActionsBar.Visibility = Visibility.Visible;
+                UpdatesTableCard.Visibility = Visibility.Visible;
             }
 
             _settings.LastUpdateCheckUtc = DateTime.UtcNow;
@@ -865,99 +1139,217 @@ public partial class MainWindow : Window {
         }
     }
 
-    private void SortMode_Changed(object sender, RoutedEventArgs e) {
-        if (_lastUpdates.Count == 0) return;
-        RenderUpdateRows(_lastUpdates);
-    }
+    // ----- Updates table: columns, sorting, type tags -----
 
-    private static readonly (string Match, string Section)[] SectionRules = {
-        ("BIOS", "BIOS"),
-        ("Graphics", "Graphics"),
-        ("Chipset", "Chipset"),
-        ("Network", "Network"),
-        ("Firmware", "Storage & firmware"),
+    private enum UpdateSortColumn { Name, Type, Version, Size, Released }
+
+    private UpdateSortColumn _updateSort = UpdateSortColumn.Released;
+    private bool _updateSortDescending = true;
+    private readonly List<Grid> _updateTableGrids = new();
+    private bool _updateTableCompact;
+
+    private const int VersionColumn = 3;
+    private const int SizeColumn = 4;
+
+    // Checkbox, name, type, version, size, released, action. The action column is a fixed width
+    // so rows line up whether they show "Download" or "Open folder" + "Run installer".
+    private GridLength[] UpdateColumnWidths() => new[] {
+        new GridLength(34), new GridLength(1, GridUnitType.Star), new GridLength(130),
+        new GridLength(_updateTableCompact ? 0 : 130), new GridLength(_updateTableCompact ? 0 : 80),
+        new GridLength(110), new GridLength(220)
     };
 
-    private static string GetSectionName(string category) {
-        foreach ((string match, string section) in SectionRules)
-            if (category.Contains(match, StringComparison.OrdinalIgnoreCase)) return section;
-        return "Other";
+    private void ApplyUpdateColumns(Grid grid) {
+        GridLength[] widths = UpdateColumnWidths();
+        if (grid.ColumnDefinitions.Count != widths.Length) {
+            grid.ColumnDefinitions.Clear();
+            foreach (GridLength width in widths) grid.ColumnDefinitions.Add(new ColumnDefinition { Width = width });
+            return;
+        }
+        for (int i = 0; i < widths.Length; i++) grid.ColumnDefinitions[i].Width = widths[i];
+    }
+
+    // Version and size are the first things to give up their room when the window is narrow.
+    private void UpdatesListPanel_SizeChanged(object sender, SizeChangedEventArgs e) {
+        bool compact = e.NewSize.Width < 820;
+        if (compact == _updateTableCompact) return;
+        _updateTableCompact = compact;
+
+        foreach (Grid grid in _updateTableGrids.Append(UpdatesHeaderGrid)) {
+            ApplyUpdateColumns(grid);
+            SetCompactCellVisibility(grid);
+        }
+    }
+
+    // A zero-width column doesn't clip what's in it, so the cells themselves are hidden too.
+    private void SetCompactCellVisibility(Grid grid) {
+        foreach (UIElement child in grid.Children) {
+            int column = Grid.GetColumn(child);
+            if (column is VersionColumn or SizeColumn)
+                child.Visibility = _updateTableCompact ? Visibility.Collapsed : Visibility.Visible;
+        }
+    }
+
+    private void UpdatesHeader_Click(object sender, System.Windows.Input.MouseButtonEventArgs e) {
+        if (sender is not FrameworkElement { Tag: string tag } || !Enum.TryParse(tag, out UpdateSortColumn column)) return;
+
+        if (column == _updateSort) {
+            _updateSortDescending = !_updateSortDescending;
+        } else {
+            _updateSort = column;
+            // Newest and biggest first; names, types and versions read naturally A→Z.
+            _updateSortDescending = column is UpdateSortColumn.Released or UpdateSortColumn.Size;
+        }
+        if (_lastUpdates.Count > 0) RenderUpdateRows(_lastUpdates);
+    }
+
+    private void RefreshUpdateHeaders() {
+        (TextBlock Header, UpdateSortColumn Column, string Label)[] headers = {
+            (NameHeaderText, UpdateSortColumn.Name, "Name"), (TypeHeaderText, UpdateSortColumn.Type, "Type"),
+            (VersionHeaderText, UpdateSortColumn.Version, "Version"), (SizeHeaderText, UpdateSortColumn.Size, "Size"),
+            (ReleasedHeaderText, UpdateSortColumn.Released, "Released"),
+        };
+        foreach ((TextBlock header, UpdateSortColumn column, string label) in headers) {
+            bool active = column == _updateSort;
+            header.Text = active ? $"{label} {(_updateSortDescending ? "↓" : "↑")}" : label;
+            header.SetResourceReference(TextBlock.ForegroundProperty, active ? "AccentBrush" : "TextSecondaryBrush");
+        }
+    }
+
+    private enum UpdateKind { Bios, Firmware, Driver, Software, Other }
+
+    // HP's categories read like "Driver-Graphics", "Software-HP Cloud Recovery" or "Utility-Tools";
+    // the tag shows the useful half and the colour shows what kind of update it is.
+    private static (string Label, UpdateKind Kind) DescribeUpdateType(string category) {
+        string text = category.Trim();
+        if (text.Contains("BIOS", StringComparison.OrdinalIgnoreCase)) return ("BIOS", UpdateKind.Bios);
+        if (text.Contains("Firmware", StringComparison.OrdinalIgnoreCase)) return ("Firmware", UpdateKind.Firmware);
+
+        string[] parts = text.Split('-', 2, StringSplitOptions.TrimEntries);
+        string head = parts[0];
+        if (head.Equals("Driver", StringComparison.OrdinalIgnoreCase))
+            return (parts.Length > 1 && parts[1].Length > 0 ? parts[1] : "Driver", UpdateKind.Driver);
+        if (head.StartsWith("Software", StringComparison.OrdinalIgnoreCase) || head.StartsWith("Utility", StringComparison.OrdinalIgnoreCase))
+            return (head, UpdateKind.Software);
+        return (head.Length > 0 ? head : "Other", UpdateKind.Other);
+    }
+
+    // Tag colours: firmware amber and diagnostics/other grey as in the chosen design, plus red for
+    // BIOS (the one to be careful with), blue for drivers and purple for HP software.
+    private (Color Background, Color Foreground) UpdateTagColors(UpdateKind kind) {
+        bool dark = DarkThemeCheckBox.IsChecked == true;
+        return kind switch {
+            UpdateKind.Bios => dark ? (Color.FromRgb(0x42, 0x17, 0x17), Color.FromRgb(0xF0, 0x95, 0x95)) : (Color.FromRgb(0xFC, 0xEB, 0xEB), Color.FromRgb(0xA3, 0x2D, 0x2D)),
+            UpdateKind.Firmware => dark ? (Color.FromRgb(0x3A, 0x2A, 0x0C), Color.FromRgb(0xEF, 0x9F, 0x27)) : (Color.FromRgb(0xFA, 0xEE, 0xDA), Color.FromRgb(0x85, 0x4F, 0x0B)),
+            UpdateKind.Driver => dark ? (Color.FromRgb(0x0C, 0x24, 0x40), Color.FromRgb(0x85, 0xB7, 0xEB)) : (Color.FromRgb(0xE6, 0xF1, 0xFB), Color.FromRgb(0x18, 0x5F, 0xA5)),
+            UpdateKind.Software => dark ? (Color.FromRgb(0x26, 0x21, 0x5C), Color.FromRgb(0xAF, 0xA9, 0xEC)) : (Color.FromRgb(0xEE, 0xED, 0xFE), Color.FromRgb(0x53, 0x4A, 0xB7)),
+            _ => dark ? (Color.FromRgb(0x2C, 0x2C, 0x2A), Color.FromRgb(0xB4, 0xB2, 0xA9)) : (Color.FromRgb(0xF1, 0xEF, 0xE8), Color.FromRgb(0x5F, 0x5E, 0x5A)),
+        };
+    }
+
+    private static string DescribeUpdateMix(List<HpDriverUpdate> updates) {
+        static string Noun(UpdateKind kind, int count) => kind switch {
+            UpdateKind.Bios => "BIOS",
+            UpdateKind.Firmware => "firmware",
+            UpdateKind.Driver => count == 1 ? "driver" : "drivers",
+            UpdateKind.Software => "software",
+            _ => "other"
+        };
+
+        IEnumerable<string> counts = updates
+            .GroupBy(u => DescribeUpdateType(u.Category).Kind)
+            .OrderBy(g => g.Key)
+            .Select(g => $"{g.Count()} {Noun(g.Key, g.Count())}");
+        return string.Join("  ·  ", counts);
+    }
+
+    private static double ParseSizeMegabytes(string size) {
+        System.Text.RegularExpressions.Match match =
+            System.Text.RegularExpressions.Regex.Match(size ?? "", @"([\d.,]+)\s*(KB|MB|GB)", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+        if (!match.Success || !double.TryParse(match.Groups[1].Value.Replace(",", ""), System.Globalization.NumberStyles.Float,
+                System.Globalization.CultureInfo.InvariantCulture, out double value)) return 0;
+        return match.Groups[2].Value.ToUpperInvariant() switch { "KB" => value / 1024, "GB" => value * 1024, _ => value };
     }
 
     private void RenderUpdateRows(List<HpDriverUpdate> updates) {
+        // Re-sorting rebuilds the rows, so carry over what the user already ticked and downloaded.
+        HashSet<HpDriverUpdate> selected = _updateEntries.Where(x => x.SelectCheckBox.IsChecked == true).Select(x => x.Update).ToHashSet();
+        Dictionary<HpDriverUpdate, string> downloaded = _updateEntries
+            .Where(x => x.DownloadedPath != null).ToDictionary(x => x.Update, x => x.DownloadedPath!);
+
         UpdatesListPanel.Children.Clear();
         _updateEntries.Clear();
+        _updateTableGrids.Clear();
+        ApplyUpdateColumns(UpdatesHeaderGrid);
+        SetCompactCellVisibility(UpdatesHeaderGrid);
+        RefreshUpdateHeaders();
 
-        List<IGrouping<string, HpDriverUpdate>> groups = updates.GroupBy(u => GetSectionName(u.Category)).ToList();
+        IEnumerable<HpDriverUpdate> ordered = _updateSort switch {
+            UpdateSortColumn.Name => updates.OrderBy(u => u.Title, StringComparer.CurrentCultureIgnoreCase),
+            UpdateSortColumn.Type => updates.OrderBy(u => DescribeUpdateType(u.Category).Kind).ThenBy(u => DescribeUpdateType(u.Category).Label, StringComparer.OrdinalIgnoreCase),
+            UpdateSortColumn.Version => updates.OrderBy(u => u.Version, StringComparer.OrdinalIgnoreCase),
+            UpdateSortColumn.Size => updates.OrderBy(u => ParseSizeMegabytes(u.FileSize)),
+            _ => updates.OrderBy(u => HpDriverUpdateService.ParseReleaseDate(u.ReleaseDate)),
+        };
+        if (_updateSortDescending) ordered = ordered.Reverse();
 
-        IEnumerable<IGrouping<string, HpDriverUpdate>> orderedGroups = SortByTypeRadio.IsChecked == true
-            ? groups.OrderBy(g => g.Key, StringComparer.OrdinalIgnoreCase)
-            : groups.OrderByDescending(g => g.Max(u => HpDriverUpdateService.ParseReleaseDate(u.ReleaseDate)));
+        bool first = true;
+        foreach (HpDriverUpdate update in ordered) {
+            UpdateEntry entry = AddUpdateRow(update, first);
+            first = false;
 
-        bool firstSection = true;
-        foreach (IGrouping<string, HpDriverUpdate> group in orderedGroups) {
-            AddSectionHeader(group.Key, firstSection);
-            firstSection = false;
-
-            bool firstRowInSection = true;
-            foreach (HpDriverUpdate update in group.OrderByDescending(u => HpDriverUpdateService.ParseReleaseDate(u.ReleaseDate))) {
-                if (!firstRowInSection) {
-                    UpdatesListPanel.Children.Add(new Border { Height = 1, Background = (Brush)FindResource("BorderBrush2") });
-                }
-                firstRowInSection = false;
-                AddUpdateRow(update);
+            if (selected.Contains(update)) entry.SelectCheckBox.IsChecked = true;
+            if (downloaded.TryGetValue(update, out string? path)) {
+                entry.DownloadedPath = path;
+                ShowDownloadedButtons(entry);
             }
         }
 
         UpdateBulkButtonsState();
     }
 
-    private void AddSectionHeader(string name, bool isFirst) {
-        UpdatesListPanel.Children.Add(new TextBlock {
-            Text = name.ToUpperInvariant(), FontSize = 10, FontWeight = FontWeights.Bold,
-            Foreground = (Brush)FindResource("AccentBrush"),
-            Margin = new Thickness(0, isFirst ? 2 : 20, 0, 6)
-        });
-    }
+    private UpdateEntry AddUpdateRow(HpDriverUpdate update, bool isFirst) {
+        var row = new Grid();
+        ApplyUpdateColumns(row);
+        _updateTableGrids.Add(row);
 
-    private void AddUpdateRow(HpDriverUpdate update) {
-        var row = new Grid { Margin = new Thickness(0, 10, 0, 10) };
-        row.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
-        row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
-        row.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
-
-        var selectCheckBox = new CheckBox {
-            Style = (Style)FindResource("ModernCheckBox"), VerticalAlignment = VerticalAlignment.Center,
-            Margin = new Thickness(0, 0, 10, 0)
-        };
-        Grid.SetColumn(selectCheckBox, 0);
+        var selectCheckBox = new CheckBox { Style = (Style)FindResource("ModernCheckBox"), VerticalAlignment = VerticalAlignment.Center };
         row.Children.Add(selectCheckBox);
 
-        var info = new StackPanel();
-        info.Children.Add(new TextBlock {
+        var nameText = new TextBlock {
             Text = update.Title, FontWeight = FontWeights.SemiBold, FontSize = 12, TextWrapping = TextWrapping.Wrap,
-            Foreground = (Brush)FindResource("TextPrimaryBrush")
-        });
-        info.Children.Add(new TextBlock {
-            Text = $"{update.Category} · v{update.Version} · {update.FileSize}" +
-                   (string.IsNullOrEmpty(update.ReleaseDate) ? "" : $" · {update.ReleaseDate}"),
-            FontSize = 11, Margin = new Thickness(0, 2, 0, 0), TextWrapping = TextWrapping.Wrap,
-            Foreground = (Brush)FindResource("TextSecondaryBrush")
-        });
-        Grid.SetColumn(info, 1);
-        row.Children.Add(info);
+            VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, 12, 0)
+        };
+        nameText.SetResourceReference(TextBlock.ForegroundProperty, "TextPrimaryBrush");
+        Grid.SetColumn(nameText, 1);
+        row.Children.Add(nameText);
+
+        (string typeLabel, UpdateKind kind) = DescribeUpdateType(update.Category);
+        (Color tagBackground, Color tagForeground) = UpdateTagColors(kind);
+        var tag = new Border {
+            Background = new SolidColorBrush(tagBackground), CornerRadius = new CornerRadius(6), Padding = new Thickness(8, 3, 8, 3),
+            HorizontalAlignment = System.Windows.HorizontalAlignment.Left, VerticalAlignment = VerticalAlignment.Center,
+            Margin = new Thickness(0, 0, 10, 0), ToolTip = update.Category,
+            Child = new TextBlock {
+                Text = typeLabel, FontSize = 11, FontWeight = FontWeights.SemiBold,
+                Foreground = new SolidColorBrush(tagForeground), TextTrimming = TextTrimming.CharacterEllipsis
+            }
+        };
+        Grid.SetColumn(tag, 2);
+        row.Children.Add(tag);
+
+        AddTableCell(row, 3, string.IsNullOrWhiteSpace(update.Version) || update.Version == "N/A" ? "—" : update.Version);
+        AddTableCell(row, 4, string.IsNullOrWhiteSpace(update.FileSize) ? "—" : update.FileSize);
+        AddTableCell(row, 5, string.IsNullOrWhiteSpace(update.ReleaseDate) ? "—" : update.ReleaseDate);
 
         var actionPanel = new StackPanel {
             Orientation = Orientation.Horizontal, VerticalAlignment = VerticalAlignment.Center,
-            Margin = new Thickness(10, 0, 0, 0)
+            HorizontalAlignment = System.Windows.HorizontalAlignment.Right
         };
-        Grid.SetColumn(actionPanel, 2);
+        Grid.SetColumn(actionPanel, 6);
         row.Children.Add(actionPanel);
 
-        var downloadButton = new Button {
-            Content = "Download", Style = (Style)FindResource("PrimaryButton"),
-            Padding = new Thickness(14, 6, 14, 6)
-        };
+        var downloadButton = new Button { Content = "Download", Style = (Style)FindResource("OutlineAccentButton") };
         actionPanel.Children.Add(downloadButton);
 
         var entry = new UpdateEntry {
@@ -969,7 +1361,24 @@ public partial class MainWindow : Window {
         selectCheckBox.Unchecked += (_, _) => UpdateBulkButtonsState();
         downloadButton.Click += async (_, _) => await DownloadEntryAsync(entry);
 
-        UpdatesListPanel.Children.Add(row);
+        SetCompactCellVisibility(row);
+
+        var rowBorder = new Border {
+            BorderThickness = new Thickness(0, isFirst ? 0 : 1, 0, 0), Padding = new Thickness(0, 10, 0, 10), Child = row
+        };
+        rowBorder.SetResourceReference(Border.BorderBrushProperty, "BorderBrush2");
+        UpdatesListPanel.Children.Add(rowBorder);
+        return entry;
+    }
+
+    private static void AddTableCell(Grid row, int column, string text) {
+        var cell = new TextBlock {
+            Text = text, FontSize = 11, VerticalAlignment = VerticalAlignment.Center,
+            TextTrimming = TextTrimming.CharacterEllipsis, Margin = new Thickness(0, 0, 10, 0), ToolTip = text
+        };
+        cell.SetResourceReference(TextBlock.ForegroundProperty, "TextSecondaryBrush");
+        Grid.SetColumn(cell, column);
+        row.Children.Add(cell);
     }
 
     private void SelectAllCheckBox_Changed(object sender, RoutedEventArgs e) {
@@ -982,6 +1391,11 @@ public partial class MainWindow : Window {
         int selected = _updateEntries.Count(x => x.SelectCheckBox.IsChecked == true);
         DownloadSelectedButton.IsEnabled = selected > 0;
         InstallSelectedButton.IsEnabled = selected > 0;
+        DownloadSelectedButton.Content = selected > 0 ? $"Download selected ({selected})" : "Download selected";
+        InstallSelectedButton.Content = selected > 0 ? $"Install selected ({selected})" : "Install selected";
+        SelectionSummaryText.Text = selected > 0
+            ? $"{selected} of {_updateEntries.Count} selected"
+            : "Tick updates to download or install several at once. Click a column to sort.";
 
         _updatingSelectAll = true;
         SelectAllCheckBox.IsChecked = selected > 0 && selected == _updateEntries.Count;
@@ -995,9 +1409,7 @@ public partial class MainWindow : Window {
         entry.DownloadButton.IsEnabled = false;
         entry.DownloadButton.Content = "Downloading...";
         try {
-            string folder = Path.Combine(
-                Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments), "HP Victus Control", "Downloads");
-            entry.DownloadedPath = await HpDriverUpdateService.DownloadUpdateAsync(entry.Update, folder);
+            entry.DownloadedPath = await HpDriverUpdateService.DownloadUpdateAsync(entry.Update, Maintenance.DriverDownloadsFolder);
             ShowDownloadedButtons(entry);
         } catch (Exception ex) {
             entry.DownloadButton.Content = "Retry";
@@ -1048,7 +1460,11 @@ public partial class MainWindow : Window {
         List<UpdateEntry> selected = _updateEntries.Where(x => x.SelectCheckBox.IsChecked == true).ToList();
         if (selected.Count == 0) return;
 
-        bool anyBios = selected.Any(x => x.Update.Category.Contains("BIOS", StringComparison.OrdinalIgnoreCase));
+        bool anyBios = selected.Any(x => IsBiosUpdate(x.Update));
+        if (anyBios && BiosUpdatePowerProblem() is string problem) {
+            MessageBox.Show(this, $"{problem}\n\nNothing was installed.", "HP Victus Control", MessageBoxButton.OK, MessageBoxImage.Warning);
+            return;
+        }
         string names = string.Join("\n", selected.Select(x => "• " + x.Update.Title));
         string warning = anyBios
             ? "\n\nThis includes a BIOS update. Do not turn off, unplug, or close the lid during installation — " +
@@ -1071,10 +1487,19 @@ public partial class MainWindow : Window {
             if (entry.DownloadedPath == null) await DownloadEntryAsync(entry);
             if (entry.DownloadedPath == null) { failed++; continue; } // download failed — skip to the next one
 
-            int? exitCode = await RunInstallerProcessAsync(entry.DownloadedPath);
+            // Checked again right before it runs: the charger may have come out during earlier installers.
+            if (IsBiosUpdate(entry.Update) && BiosUpdatePowerProblem() is string lateProblem) {
+                failed++;
+                MessageBox.Show(this, $"Skipped {entry.Update.Title}: {lateProblem}", "HP Victus Control", MessageBoxButton.OK, MessageBoxImage.Warning);
+                continue;
+            }
+
+            string installerPath = entry.DownloadedPath;
+            int? exitCode = await RunInstallerProcessAsync(installerPath);
             if (exitCode == 0) {
                 succeeded++;
                 InstalledUpdateHistory.MarkInstalled(entry.Update);
+                DeleteInstallerIfAutoClean(installerPath);
             } else {
                 failed++;
             }
@@ -1100,8 +1525,32 @@ public partial class MainWindow : Window {
         }
     }
 
+    private static bool IsBiosUpdate(HpDriverUpdate update) => update.Category.Contains("BIOS", StringComparison.OrdinalIgnoreCase);
+
+    // A BIOS flash that loses power part-way can leave the laptop unable to start, so it's only allowed
+    // on the charger with enough battery to finish if the charger gets knocked out. Returns why not, or null.
+    private const int MinBatteryPercentForBios = 50;
+
+    private static string? BiosUpdatePowerProblem() {
+        System.Windows.Forms.PowerStatus power = System.Windows.Forms.SystemInformation.PowerStatus;
+        bool pluggedIn = power.PowerLineStatus == System.Windows.Forms.PowerLineStatus.Online;
+        // 255% means Windows can't read a battery at all; that's not something to flash a BIOS on either.
+        int percent = power.BatteryLifePercent > 1f ? -1 : (int)Math.Round(power.BatteryLifePercent * 100);
+
+        if (!pluggedIn) return "BIOS updates only run on the charger. Plug the laptop in and try again.";
+        if (percent < 0) return "Windows can't read the battery level, so the BIOS update was blocked to be safe.";
+        if (percent < MinBatteryPercentForBios)
+            return $"The battery is at {percent}%. Let it charge to at least {MinBatteryPercentForBios}% before a BIOS update, " +
+                   "so it can finish even if the charger gets unplugged.";
+        return null;
+    }
+
     private async Task RunInstallerAsync(HpDriverUpdate update, string filePath, Button runButton) {
-        bool isBios = update.Category.Contains("BIOS", StringComparison.OrdinalIgnoreCase);
+        bool isBios = IsBiosUpdate(update);
+        if (isBios && BiosUpdatePowerProblem() is string problem) {
+            MessageBox.Show(this, problem, "HP Victus Control", MessageBoxButton.OK, MessageBoxImage.Warning);
+            return;
+        }
         string warning = isBios
             ? "This is a BIOS update. Do not turn off, unplug, or close the lid until it finishes — " +
               "an interrupted BIOS update can leave the laptop unable to boot.\n\nMake sure it's plugged into AC power first."
@@ -1121,6 +1570,7 @@ public partial class MainWindow : Window {
         if (exitCode == 0) {
             runButton.Content = "Installed";
             InstalledUpdateHistory.MarkInstalled(update);
+            DeleteInstallerIfAutoClean(filePath);
         } else {
             runButton.Content = "Run installer";
             runButton.IsEnabled = true;
@@ -1133,6 +1583,330 @@ public partial class MainWindow : Window {
         }
     }
 
+    // ----- System tab: laptop details, battery health, graphics mode ---------------------------
+
+    private bool _systemTabLoaded;
+    private List<SystemInfoItem> _systemInfo = new();
+
+    // Filled in the first time the tab is opened: the WMI lookups and the battery report each take
+    // about a second, which isn't worth paying at every startup for a page most visits skip.
+    private async void LoadSystemTab() {
+        if (_systemTabLoaded) return;
+        _systemTabLoaded = true;
+
+        LoadGraphicsMode();
+        FanTestButton.IsEnabled = _bios.IsAvailable;
+        RefreshMaintenanceSizes();
+
+        Task<List<SystemInfoItem>> infoTask = Task.Run(SystemInfo.Collect);
+        Task<BatteryHealthReport?> batteryTask = Task.Run(BatteryHealth.TryRead);
+
+        _systemInfo = await infoTask;
+        if (_graphicsSwitchSupported.HasValue)
+            _systemInfo.Add(new SystemInfoItem("Graphics switch", _graphicsSwitchSupported.Value ? "Yes (BIOS)" : "No"));
+        RenderSystemInfo();
+
+        ShowBatteryHealth(await batteryTask);
+    }
+
+    private void RenderSystemInfo() {
+        SystemInfoGrid.Children.Clear();
+        SystemInfoGrid.RowDefinitions.Clear();
+        SystemInfoGrid.ColumnDefinitions.Clear();
+        SystemInfoGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(140) });
+        SystemInfoGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+
+        for (int i = 0; i < _systemInfo.Count; i++) {
+            SystemInfoGrid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+            var divider = new Border { BorderThickness = new Thickness(0, i == 0 ? 0 : 1, 0, 0) };
+            divider.SetResourceReference(Border.BorderBrushProperty, "BorderBrush2");
+            Grid.SetRow(divider, i);
+            Grid.SetColumnSpan(divider, 2);
+            SystemInfoGrid.Children.Add(divider);
+
+            var label = new TextBlock { Text = _systemInfo[i].Label, FontSize = 12, Margin = new Thickness(0, 9, 12, 9) };
+            label.SetResourceReference(TextBlock.ForegroundProperty, "TextSecondaryBrush");
+            Grid.SetRow(label, i);
+            SystemInfoGrid.Children.Add(label);
+
+            var value = new TextBlock {
+                Text = _systemInfo[i].Value, FontSize = 12, Margin = new Thickness(0, 9, 0, 9), TextWrapping = TextWrapping.Wrap,
+                LineHeight = 20
+            };
+            value.SetResourceReference(TextBlock.ForegroundProperty, "TextPrimaryBrush");
+            Grid.SetRow(value, i);
+            Grid.SetColumn(value, 1);
+            SystemInfoGrid.Children.Add(value);
+        }
+
+        SystemInfoStatusText.Text = _systemInfo.Count > 0
+            ? "Handy for support chats, warranty checks and forum posts."
+            : "Couldn't read the system details.";
+        CopySystemInfoButton.IsEnabled = _systemInfo.Count > 0;
+    }
+
+    private void CopySystemInfoButton_Click(object sender, RoutedEventArgs e) {
+        try {
+            System.Windows.Clipboard.SetText(SystemInfo.ToClipboardText(_systemInfo));
+            SystemInfoStatusText.Text = "Copied — paste it anywhere.";
+        } catch {
+            // The clipboard can be briefly locked by another app; a second click works.
+            SystemInfoStatusText.Text = "The clipboard was busy — try again.";
+        }
+    }
+
+    private void CheckWarrantyButton_Click(object sender, RoutedEventArgs e) {
+        try {
+            Process.Start(new ProcessStartInfo("https://support.hp.com/checkwarranty") { UseShellExecute = true });
+        } catch {
+            // No default browser configured — nothing sensible to fall back to.
+        }
+    }
+
+    private void ShowBatteryHealth(BatteryHealthReport? report) {
+        if (report == null) {
+            BatteryHealthPercentText.Text = "N/A";
+            BatteryHealthSummaryText.Text = "Windows didn't return a battery report for this PC.";
+            return;
+        }
+
+        double health = report.HealthPercent;
+        BatteryHealthPercentText.Text = $"{health:0}%";
+        BatteryHealthFillColumn.Width = new GridLength(health, GridUnitType.Star);
+        BatteryHealthRestColumn.Width = new GridLength(100 - health, GridUnitType.Star);
+
+        string verdict = health >= 90 ? "Healthy — close to new" : health >= 80 ? "Normal wear" : "Worn — expect noticeably shorter battery life";
+        BatteryHealthSummaryText.Text = $"{verdict}. Holds {report.FullChargeCapacityMwh / 1000.0:0.0} Wh of the {report.DesignCapacityMwh / 1000.0:0.0} Wh it had when new.";
+
+        var details = new List<string>();
+        if (report.CycleCount.HasValue) details.Add($"{report.CycleCount} charge cycles");
+        if (report.Chemistry.Length > 0) details.Add(report.Chemistry == "LION" ? "Lithium-ion" : report.Chemistry);
+        if (report.HistoryStart.HasValue && report.HistoryStartFullChargeMwh.HasValue)
+            details.Add($"{report.HistoryStartFullChargeMwh.Value / 1000.0:0.0} Wh on {report.HistoryStart.Value:MMM d}");
+        BatteryHealthDetailText.Text = string.Join("  ·  ", details);
+
+        // The battery's biggest enemy on a gaming laptop is sitting at 100% on the charger all day.
+        if (report.PluggedInShare is double pluggedIn && pluggedIn >= 0.7) {
+            BatteryHealthAdviceText.Text = $"Plugged in {pluggedIn:P0} of the time recently. Batteries wear fastest when held at 100%: " +
+                "if your BIOS setup has HP's Adaptive Battery Optimizer, turning it on lets the laptop hold a lower charge while it stays plugged in.";
+            BatteryHealthAdviceText.Visibility = Visibility.Visible;
+        }
+    }
+
+    // null until the BIOS has been asked; the switch is only offered when the BIOS reports one.
+    private bool? _graphicsSwitchSupported;
+    private HpGpuMode? _currentGpuMode;
+    private bool _syncingGpuModeRadios;
+
+    private void LoadGraphicsMode() {
+        if (!_bios.IsAvailable) {
+            GraphicsModeStatusText.Text = "Needs the HP BIOS interface, which isn't available right now.";
+            return;
+        }
+
+        try {
+            _graphicsSwitchSupported = _bios.IsGraphicsSwitchSupported();
+        } catch (HpBiosException) {
+            GraphicsModeStatusText.Text = "The BIOS didn't answer the graphics switch query.";
+            return;
+        }
+
+        if (_graphicsSwitchSupported != true) {
+            GraphicsModeStatusText.Text =
+                "This laptop doesn't have a graphics switch: its BIOS reports no MUX. The Intel GPU always drives the built-in " +
+                "screen and the NVIDIA GPU renders games through it. That's wired into the hardware, so no app or setting can change it — " +
+                "\"Use NVIDIA GPU\" on each game is already the fastest option available.";
+            return;
+        }
+
+        try {
+            _currentGpuMode = _bios.GetGpuMode();
+        } catch (HpBiosException) {
+            GraphicsModeStatusText.Text = "This laptop has a graphics switch, but the BIOS didn't report its current mode.";
+            return;
+        }
+
+        GraphicsModeStatusText.Text =
+            "Hybrid lets the Intel GPU run the screen and hands game frames over from NVIDIA — better battery life. " +
+            "NVIDIA only connects the screen straight to the NVIDIA GPU — more fps, but the battery drains faster. Takes effect after a restart.";
+        GraphicsModeTrack.Visibility = Visibility.Visible;
+        SyncGpuModeRadios(_currentGpuMode.Value);
+    }
+
+    private void SyncGpuModeRadios(HpGpuMode mode) {
+        _syncingGpuModeRadios = true;
+        HybridGpuRadio.IsChecked = mode != HpGpuMode.Discrete;
+        DiscreteGpuRadio.IsChecked = mode == HpGpuMode.Discrete;
+        _syncingGpuModeRadios = false;
+    }
+
+    private void GpuModeRadio_Checked(object sender, RoutedEventArgs e) {
+        if (_syncingGpuModeRadios || _graphicsSwitchSupported != true || _currentGpuMode == null) return;
+
+        HpGpuMode wanted = ReferenceEquals(sender, DiscreteGpuRadio) ? HpGpuMode.Discrete : HpGpuMode.Hybrid;
+        if (wanted == _currentGpuMode || (wanted == HpGpuMode.Hybrid && _currentGpuMode == HpGpuMode.Optimus)) return;
+
+        string name = wanted == HpGpuMode.Discrete ? "NVIDIA only" : "Hybrid";
+        MessageBoxResult confirmed = MessageBox.Show(this,
+            $"Switch graphics mode to {name}?\n\nThe BIOS applies this the next time the laptop restarts." +
+            (wanted == HpGpuMode.Discrete ? "\n\nNVIDIA only drains the battery noticeably faster." : ""),
+            "HP Victus Control", MessageBoxButton.YesNo, MessageBoxImage.Question);
+        if (confirmed != MessageBoxResult.Yes) {
+            SyncGpuModeRadios(_currentGpuMode.Value);
+            return;
+        }
+
+        try {
+            _bios.SetGpuMode(wanted);
+            _currentGpuMode = wanted;
+            GraphicsModeHintText.Text = $"{name} is set and will be used after you restart.";
+            GraphicsModeHintText.Visibility = Visibility.Visible;
+            RestartNowButton.Visibility = Visibility.Visible;
+        } catch (HpBiosException ex) {
+            SyncGpuModeRadios(_currentGpuMode.Value);
+            MessageBox.Show(this, $"The BIOS didn't accept the change: {ex.Message}", "HP Victus Control", MessageBoxButton.OK, MessageBoxImage.Warning);
+        }
+    }
+
+    private void RestartNowButton_Click(object sender, RoutedEventArgs e) {
+        MessageBoxResult confirmed = MessageBox.Show(this,
+            "Restart the laptop now? Save anything you have open first.",
+            "HP Victus Control", MessageBoxButton.YesNo, MessageBoxImage.Warning);
+        if (confirmed != MessageBoxResult.Yes) return;
+
+        try {
+            Process.Start(new ProcessStartInfo("shutdown.exe", "/r /t 0") { UseShellExecute = false, CreateNoWindow = true });
+        } catch (Exception ex) {
+            MessageBox.Show(this, $"Couldn't restart: {ex.Message}", "HP Victus Control", MessageBoxButton.OK, MessageBoxImage.Warning);
+        }
+    }
+
+    // ----- Maintenance: fan test, shader cache, driver downloads ------------------------------
+
+    private async void RefreshMaintenanceSizes() {
+        (FolderUsage shaders, FolderUsage downloads) = await Task.Run(() => (Maintenance.MeasureShaderCaches(), Maintenance.MeasureDriverDownloads()));
+
+        ShaderCacheSizeText.Text = shaders.Files == 0
+            ? "Empty. Games rebuild it as they run."
+            : $"{shaders} of compiled NVIDIA, DirectX and Intel shaders. Clearing it can fix stutter after a driver update; games rebuild it, so their next launch loads a little slower.";
+        ClearShaderCacheButton.IsEnabled = shaders.Files > 0;
+
+        DriverDownloadsSizeText.Text = downloads.Files == 0
+            ? "No installers kept."
+            : $"{downloads} in {downloads.Files} installer{(downloads.Files == 1 ? "" : "s")} downloaded from the Drivers tab.";
+        CleanDriverDownloadsButton.IsEnabled = downloads.Files > 0;
+    }
+
+    private async void ClearShaderCacheButton_Click(object sender, RoutedEventArgs e) {
+        ClearShaderCacheButton.IsEnabled = false;
+        ShaderCacheSizeText.Text = "Clearing…";
+        (FolderUsage freed, int skipped) = await Task.Run(Maintenance.ClearShaderCaches);
+        RefreshMaintenanceSizes();
+        _tray.ShowBalloon("HP Victus Control", $"Shader cache cleared — freed {freed}" +
+            (skipped > 0 ? $" ({skipped} file{(skipped == 1 ? "" : "s")} in use by a running game were left)" : ""));
+    }
+
+    private async void CleanDriverDownloadsButton_Click(object sender, RoutedEventArgs e) {
+        MessageBoxResult confirmed = MessageBox.Show(this,
+            "Delete every downloaded driver and BIOS installer? You can download them again from the Drivers tab.",
+            "HP Victus Control", MessageBoxButton.YesNo, MessageBoxImage.Question);
+        if (confirmed != MessageBoxResult.Yes) return;
+
+        CleanDriverDownloadsButton.IsEnabled = false;
+        (FolderUsage freed, int skipped) = await Task.Run(() => Maintenance.CleanDriverDownloads());
+        RefreshMaintenanceSizes();
+        _tray.ShowBalloon("HP Victus Control", $"Freed {freed}" + (skipped > 0 ? $"; {skipped} installer(s) still in use were left" : ""));
+    }
+
+    private void AutoCleanDownloadsCheckBox_Changed(object sender, RoutedEventArgs e) {
+        if (_initializing) return;
+        _settings.AutoCleanDriverDownloads = AutoCleanDownloadsCheckBox.IsChecked == true;
+        _settings.Save();
+    }
+
+    // Once an installer has run successfully there's no reason to keep a copy of it.
+    private void DeleteInstallerIfAutoClean(string path) {
+        if (_settings.AutoCleanDriverDownloads && Maintenance.DeleteDownloadedInstaller(path) && _systemTabLoaded) RefreshMaintenanceSizes();
+    }
+
+    private async void SweepOldDriverDownloads() {
+        if (!_settings.AutoCleanDriverDownloads) return;
+        await Task.Run(() => Maintenance.CleanDriverDownloads(TimeSpan.FromDays(30)));
+    }
+
+    private bool _fanTestRunning;
+
+    // Full speed for 15 seconds, sampling each fan every second. A healthy fan on this laptop reaches
+    // roughly 5,000 RPM within a few seconds; one that stays low, or lags well behind the other fan,
+    // is worth a closer look (dust, a worn bearing, or a loose connector).
+    private async void FanTestButton_Click(object sender, RoutedEventArgs e) {
+        if (!_bios.IsAvailable || _fanTestRunning) return;
+
+        _fanTestRunning = true;
+        FanTestButton.IsEnabled = false;
+        FanTestResultText.Visibility = Visibility.Visible;
+
+        bool maxFanWasOn = false;
+        try {
+            maxFanWasOn = _bios.GetMaxFanSpeed();
+            (byte cpuStart, byte gpuStart) = _bios.GetFanLevels();
+            byte cpuPeak = cpuStart, gpuPeak = gpuStart;
+            int? cpuReached = null, gpuReached = null;
+
+            _bios.SetMaxFanSpeed(true);
+            for (int second = 1; second <= 15; second++) {
+                FanTestButton.Content = $"Testing… {16 - second}s";
+                FanTestResultText.Text = $"CPU fan ~{cpuPeak * 100:N0} RPM  ·  GPU fan ~{gpuPeak * 100:N0} RPM";
+                await Task.Delay(1000);
+                try {
+                    (byte cpu, byte gpu) = _bios.GetFanLevels();
+                    cpuPeak = Math.Max(cpuPeak, cpu);
+                    gpuPeak = Math.Max(gpuPeak, gpu);
+                    if (cpuReached == null && cpu * 100 >= 4000) cpuReached = second;
+                    if (gpuReached == null && gpu * 100 >= 4000) gpuReached = second;
+                } catch (HpBiosException) {
+                    // A missed reading under load; the next second tries again.
+                }
+            }
+
+            FanTestResultText.Text = string.Join(Environment.NewLine,
+                DescribeFanResult("CPU fan", cpuStart, cpuPeak, cpuReached, gpuPeak),
+                DescribeFanResult("GPU fan", gpuStart, gpuPeak, gpuReached, cpuPeak));
+        } catch (HpBiosException ex) {
+            FanTestResultText.Text = $"The BIOS didn't answer during the test: {ex.Message}";
+        } finally {
+            try {
+                if (!maxFanWasOn) _bios.SetMaxFanSpeed(false);
+            } catch (HpBiosException) {
+                // Leave it; the max fan switch in Fan control still works to turn it off.
+            }
+            // Let the auto fan curve re-apply its own levels on the next tick.
+            _lastAutoCpuFanLevel = null;
+            _lastAutoGpuFanLevel = null;
+            _fanTestRunning = false;
+            FanTestButton.Content = "Test fans";
+            FanTestButton.IsEnabled = true;
+        }
+    }
+
+    private static string DescribeFanResult(string name, byte start, byte peak, int? reachedAt, byte otherPeak) {
+        int startRpm = start * 100, peakRpm = peak * 100;
+        string numbers = $"{name}: ~{startRpm:N0} → ~{peakRpm:N0} RPM";
+        if (peakRpm < 4000) return $"{numbers}  ✗  didn't reach full speed — worth checking for dust or a failing fan.";
+        if (otherPeak > 0 && peak < otherPeak * 0.8) return $"{numbers}  ⚠  noticeably slower than the other fan.";
+        return $"{numbers}  ✓  healthy{(reachedAt.HasValue ? $", full speed within {reachedAt} s" : "")}.";
+    }
+
+    private void TuneWifiCheckBox_Changed(object sender, RoutedEventArgs e) {
+        if (_initializing) return;
+        _settings.TuneWifiForGames = TuneWifiCheckBox.IsChecked == true;
+        _settings.Save();
+
+        // Takes effect straight away for a game that's already running.
+        if (!_settings.TuneWifiForGames) _wifiTuning.Stop();
+        else if (_activeGameProfileExeName != null) _wifiTuning.Start();
+    }
+
     // ----- Per-game profiles ----------------------------------------------------------------
 
     // At most one tracked game "owns" the current mode at a time; when it exits, the mode from
@@ -1142,59 +1916,129 @@ public partial class MainWindow : Window {
     private bool _activeGameMaxFan;
     private bool _preGameMaxFan;
 
+    private readonly GameBoost _gameBoost = new();
+    private readonly WifiTuning _wifiTuning = new();
+    // The resolution from before a game lowered it; null when no game changed it.
+    private (int Width, int Height)? _preGameResolution;
+
+    private sealed record TrackedGame(string ExeName, string Name, HpFanMode? Mode, int RefreshRateHz,
+        bool MaxFan, bool Boost, (int Width, int Height)? Resolution);
+
     private void CheckGameProfiles() {
-        var tracked = new List<(string ExeName, string Name, HpFanMode? Mode, int RefreshRateHz, bool MaxFan)>();
+        var tracked = new List<TrackedGame>();
         foreach (GameProfile profile in _settings.GameProfiles) {
             HpFanMode? mode = Enum.TryParse(profile.Mode, out HpFanMode parsed) ? parsed : null;
             int hz = _refreshRates.Contains(profile.RefreshRateHz) ? profile.RefreshRateHz : 0;
-            if (mode == null && hz == 0 && !profile.MaxFan) continue;
+            (int, int)? resolution = profile.ResolutionWidth > 0 && profile.ResolutionHeight > 0
+                ? (profile.ResolutionWidth, profile.ResolutionHeight) : null;
+            // With Wi-Fi tuning on, every game in the list counts, even one with nothing else set.
+            if (mode == null && hz == 0 && !profile.MaxFan && !profile.Boost && resolution == null && !_settings.TuneWifiForGames) continue;
 
             string exeName = Path.GetFileNameWithoutExtension(profile.ExecutablePath);
-            if (exeName.Length > 0) tracked.Add((exeName, profile.Name, mode, hz, profile.MaxFan));
+            if (exeName.Length > 0) tracked.Add(new TrackedGame(exeName, profile.Name, mode, hz, profile.MaxFan, profile.Boost, resolution));
         }
         if (tracked.Count == 0 && _activeGameProfileExeName == null) return;
 
         HashSet<string> running = GetRunningProcessNames();
 
         if (_activeGameProfileExeName != null) {
-            if (running.Contains(_activeGameProfileExeName)) {
+            if (IsGameRunning(running, _activeGameProfileExeName)) {
                 KeepMaxFanAsserted();
+                KeepGameBoosted(_activeGameProfileExeName);
                 return;
             }
 
             string endedGame = _activeGameProfileExeName;
+            // Resolution first: re-applying the mode below writes its refresh rate at whatever size is current.
+            RestorePreGameResolution();
             // Re-applying the earlier mode also puts back that mode's refresh rate.
             ApplyMode(_preGameMode);
             if (_activeGameMaxFan) {
                 _activeGameMaxFan = false;
                 MaxFanCheckBox.IsChecked = _preGameMaxFan;
             }
+            _gameBoost.Stop();
+            _wifiTuning.Stop();
             _activeGameProfileExeName = null;
             _tray.ShowBalloon("HP Victus Control", $"{endedGame} closed — restored {_preGameMode} mode");
         }
 
-        foreach ((string exeName, string name, HpFanMode? mode, int hz, bool maxFan) in tracked) {
-            if (!running.Contains(exeName)) continue;
+        foreach (TrackedGame game in tracked) {
+            if (!IsGameRunning(running, game.ExeName)) continue;
 
             _preGameMode = _currentMode;
-            if (mode.HasValue) ApplyMode(mode.Value);
-            if (hz > 0) ApplyRefreshRate(hz);
-            if (maxFan) {
+            if (game.Mode.HasValue) ApplyMode(game.Mode.Value);
+            if (game.RefreshRateHz > 0) ApplyRefreshRate(game.RefreshRateHz);
+            // After the mode and refresh rate, which are saved to the registry: the lowered resolution isn't,
+            // so it can't outlive the game.
+            bool resolutionChanged = game.Resolution.HasValue && ApplyGameResolution(game.Resolution.Value);
+            if (game.MaxFan) {
                 _preGameMaxFan = MaxFanCheckBox.IsChecked == true;
                 _activeGameMaxFan = true;
                 // The checkbox's own handler is what talks to the BIOS and the tray menu.
                 MaxFanCheckBox.IsChecked = true;
                 KeepMaxFanAsserted();
             }
-            _activeGameProfileExeName = exeName;
+            _activeGameProfileExeName = game.ExeName;
+            if (game.Boost) {
+                _gameBoost.Start();
+                KeepGameBoosted(game.ExeName);
+            }
+            bool wifiTuned = _settings.TuneWifiForGames && _wifiTuning.Start() > 0;
 
             var changes = new List<string>();
-            if (mode.HasValue) changes.Add($"{mode.Value} mode");
-            if (hz > 0) changes.Add($"{hz}Hz");
-            if (maxFan) changes.Add("max fan");
-            _tray.ShowBalloon("HP Victus Control", $"{name} detected — switched to {string.Join(", ", changes)}");
+            if (game.Mode.HasValue) changes.Add($"{game.Mode.Value} mode");
+            if (game.RefreshRateHz > 0) changes.Add($"{game.RefreshRateHz}Hz");
+            if (resolutionChanged) changes.Add($"{game.Resolution!.Value.Width}×{game.Resolution.Value.Height}");
+            if (game.MaxFan) changes.Add("max fan");
+            if (game.Boost) changes.Add("game boost");
+            if (wifiTuned) changes.Add("Wi-Fi tuning");
+            if (changes.Count > 0)
+                _tray.ShowBalloon("HP Victus Control", $"{game.Name} detected — switched to {string.Join(", ", changes)}");
             break;
         }
+    }
+
+    private bool ApplyGameResolution((int Width, int Height) resolution) {
+        (int Width, int Height)? current = DisplayRefreshRate.GetCurrentResolution();
+        if (current == null || current.Value == resolution) return false;
+
+        if (!DisplayRefreshRate.SetResolution(resolution.Width, resolution.Height)) return false;
+        _preGameResolution ??= current;
+        return true;
+    }
+
+    private void RestorePreGameResolution() {
+        if (_preGameResolution is not (int width, int height)) return;
+        _preGameResolution = null;
+        DisplayRefreshRate.SetResolution(width, height, persist: true);
+    }
+
+    // Games don't always run under the file name that was added: GTA V Enhanced's GTA5.exe starts the
+    // actual game as "GTA5_Enhanced", so an exact name match never saw it running. A running process
+    // also counts when its name is the game's name plus a "_", "-" or " " suffix — close enough to
+    // catch those renamed game processes, strict enough that "Game" doesn't match "GameBar".
+    private static bool IsGameRunning(HashSet<string> running, string exeName) =>
+        running.Contains(exeName) || running.Any(name => IsGameProcessName(name, exeName));
+
+    private static bool IsGameProcessName(string processName, string exeName) {
+        if (processName.Equals(exeName, StringComparison.OrdinalIgnoreCase)) return true;
+        return exeName.Length >= 3
+            && processName.Length > exeName.Length
+            && processName.StartsWith(exeName, StringComparison.OrdinalIgnoreCase)
+            && processName[exeName.Length] is '_' or '-' or ' ';
+    }
+
+    private void KeepGameBoosted(string exeName) {
+        if (!_gameBoost.IsActive) return;
+
+        var processes = new List<Process>();
+        foreach (Process process in Process.GetProcesses()) {
+            if (IsGameProcessName(process.ProcessName, exeName)) processes.Add(process);
+            else process.Dispose();
+        }
+        _gameBoost.BoostProcesses(processes);
+        foreach (Process process in processes) process.Dispose();
     }
 
     // The BIOS lets its own curve take the fans back over after a while — and whenever the
@@ -1248,51 +2092,75 @@ public partial class MainWindow : Window {
 
         GameProfilesListPanel.Children.Clear();
         NoGameProfilesText.Visibility = _settings.GameProfiles.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
+        GameCountText.Text = _settings.GameProfiles.Count switch {
+            0 => "",
+            1 => "1 game",
+            int count => $"{count} games"
+        };
 
-        bool first = true;
-        foreach (GameProfile profile in _settings.GameProfiles.OrderBy(p => p.Name, StringComparer.OrdinalIgnoreCase)) {
-            if (!first) {
-                var divider = new Border { Height = 1, Margin = new Thickness(0, 12, 0, 12) };
-                divider.SetResourceReference(Border.BackgroundProperty, "BorderBrush2");
-                GameProfilesListPanel.Children.Add(divider);
-            }
-            first = false;
-            GameProfilesListPanel.Children.Add(BuildGameRow(profile));
-        }
+        foreach (GameProfile profile in _settings.GameProfiles.OrderBy(p => p.Name, StringComparer.OrdinalIgnoreCase))
+            GameProfilesListPanel.Children.Add(BuildGameCard(profile));
     }
 
-    private FrameworkElement BuildGameRow(GameProfile profile) {
-        bool installed = File.Exists(profile.ExecutablePath);
+    // Two cards per row fit comfortably from about 760px; narrower than that they get one each.
+    private void GameProfilesListPanel_SizeChanged(object sender, SizeChangedEventArgs e) {
+        int columns = e.NewSize.Width >= 760 ? 2 : 1;
+        if (GameProfilesListPanel.Columns != columns) GameProfilesListPanel.Columns = columns;
+    }
 
-        var row = new Grid();
-        row.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
-        row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
-        row.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+    private FrameworkElement BuildGameCard(GameProfile profile) {
+        bool installed = File.Exists(profile.ExecutablePath);
+        var body = new StackPanel();
+
+        // Header: icon, name, where it's installed, and Remove for manually added games.
+        var header = new Grid { Margin = new Thickness(0, 0, 0, 4) };
+        header.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        header.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+        header.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
 
         FrameworkElement icon = BuildAppIcon(profile.ExecutablePath, profile.Name);
-        Grid.SetColumn(icon, 0);
-        row.Children.Add(icon);
+        header.Children.Add(icon);
 
-        var body = new StackPanel { Margin = new Thickness(12, 0, 0, 0) };
-
-        var nameText = new TextBlock { Text = profile.Name, FontWeight = FontWeights.SemiBold, FontSize = 13, TextWrapping = TextWrapping.Wrap };
+        var title = new StackPanel { Margin = new Thickness(12, 0, 0, 0), VerticalAlignment = VerticalAlignment.Center };
+        var nameText = new TextBlock { Text = profile.Name, FontWeight = FontWeights.SemiBold, FontSize = 13, TextTrimming = TextTrimming.CharacterEllipsis };
         nameText.SetResourceReference(TextBlock.ForegroundProperty, "TextPrimaryBrush");
-        body.Children.Add(nameText);
-
-        var pathText = new TextBlock {
-            Text = installed ? profile.ExecutablePath : $"Not found: {profile.ExecutablePath}",
-            FontSize = 10, Margin = new Thickness(0, 2, 0, 8), TextWrapping = TextWrapping.Wrap
+        title.Children.Add(nameText);
+        var sourceText = new TextBlock {
+            Text = installed ? DescribeGameSource(profile.ExecutablePath) : "Not found on this PC",
+            FontSize = 11, Margin = new Thickness(0, 2, 0, 0), TextTrimming = TextTrimming.CharacterEllipsis,
+            ToolTip = profile.ExecutablePath
         };
-        pathText.SetResourceReference(TextBlock.ForegroundProperty, "TextSecondaryBrush");
-        body.Children.Add(pathText);
+        sourceText.SetResourceReference(TextBlock.ForegroundProperty, "TextSecondaryBrush");
+        title.Children.Add(sourceText);
+        if (installed) ShowGameInstallSize(profile.ExecutablePath, sourceText);
+        Grid.SetColumn(title, 1);
+        header.Children.Add(title);
 
-        body.Children.Add(BuildGameModeSelector(profile));
-        if (_refreshRates.Count > 1) body.Children.Add(BuildGameRefreshRateSelector(profile));
-        if (NvidiaFrameLimiter.IsAvailable && installed) body.Children.Add(BuildGameFrameLimitSelector(profile));
+        // Scanned games reappear on the next scan, so only manually added ones get a Remove button.
+        if (!profile.IsScanned) {
+            var removeButton = new Button {
+                Content = "Remove", Style = (Style)FindResource("SecondaryButton"),
+                Padding = new Thickness(12, 6, 12, 6), Margin = new Thickness(10, 0, 0, 0), VerticalAlignment = VerticalAlignment.Center
+            };
+            removeButton.Click += (_, _) => {
+                _settings.GameProfiles.Remove(profile);
+                _settings.Save();
+                RenderGameProfilesList();
+            };
+            Grid.SetColumn(removeButton, 2);
+            header.Children.Add(removeButton);
+        }
+        body.Children.Add(header);
+
+        body.Children.Add(BuildLabeledRow("Mode", null, BuildGameModeSelector(profile)));
+        if (_refreshRates.Count > 1) body.Children.Add(BuildLabeledRow("Refresh rate", null, BuildGameRefreshRateSelector(profile)));
+        if (GameResolutions.Count > 1) body.Children.Add(BuildLabeledRow("Resolution", null, BuildGameResolutionSelector(profile)));
+        if (NvidiaFrameLimiter.IsAvailable && installed)
+            body.Children.Add(BuildLabeledRow("FPS cap", "Empty = no cap", BuildGameFrameLimitSelector(profile)));
 
         if (NvidiaGpuSensor.IsAvailable && installed) {
             var gpuToggle = new CheckBox {
-                Content = "Use NVIDIA GPU", Style = (Style)FindResource("GlowToggle"), Margin = new Thickness(0, 10, 0, 0),
+                Content = "Use NVIDIA GPU", Style = (Style)FindResource("GlowToggle"), Margin = new Thickness(0, 12, 0, 0),
                 IsChecked = GpuPreference.IsHighPerformance(profile.ExecutablePath)
             };
             gpuToggle.Checked += (_, _) => SetGameGpuPreference(profile.ExecutablePath, true);
@@ -1301,7 +2169,7 @@ public partial class MainWindow : Window {
         }
 
         var maxFanToggle = new CheckBox {
-            Content = "Max fan while playing", Style = (Style)FindResource("GlowToggle"), Margin = new Thickness(0, 8, 0, 0),
+            Content = "Max fan while playing", Style = (Style)FindResource("GlowToggle"), Margin = new Thickness(0, 10, 0, 0),
             ToolTip = "Runs both fans flat out while this game is open, then puts the fans back afterwards",
             IsChecked = profile.MaxFan
         };
@@ -1309,31 +2177,92 @@ public partial class MainWindow : Window {
         maxFanToggle.Unchecked += (_, _) => SaveGameMaxFan(profile, false);
         body.Children.Add(maxFanToggle);
 
-        Grid.SetColumn(body, 1);
-        row.Children.Add(body);
+        var boostToggle = new CheckBox {
+            Content = "Game boost", Style = (Style)FindResource("GlowToggle"), Margin = new Thickness(0, 10, 0, 0),
+            ToolTip = "While this game runs: gives it high CPU priority and closes OneDrive so syncing doesn't compete. Both go back when the game closes.",
+            IsChecked = profile.Boost
+        };
+        boostToggle.Checked += (_, _) => SaveGameBoost(profile, true);
+        boostToggle.Unchecked += (_, _) => SaveGameBoost(profile, false);
+        body.Children.Add(boostToggle);
 
-        // Scanned games reappear on the next scan, so only manually added ones get a Remove button.
-        if (!profile.IsScanned) {
-            var removeButton = new Button {
-                Content = "Remove", Style = (Style)FindResource("SecondaryButton"),
-                Padding = new Thickness(12, 6, 12, 6), Margin = new Thickness(10, 0, 0, 0),
-                VerticalAlignment = VerticalAlignment.Top
-            };
-            removeButton.Click += (_, _) => {
-                _settings.GameProfiles.Remove(profile);
-                _settings.Save();
-                RenderGameProfilesList();
-            };
-            Grid.SetColumn(removeButton, 2);
-            row.Children.Add(removeButton);
+        return new Border { Style = (Style)FindResource("Card"), Margin = new Thickness(7, 0, 7, 14), Child = body };
+    }
+
+    // Install sizes are cached for the session: Steam's is instant, but other games are measured by
+    // walking their whole folder, which can take a few seconds for a 100 GB install.
+    private readonly Dictionary<string, long?> _gameInstallSizes = new(StringComparer.OrdinalIgnoreCase);
+
+    private async void ShowGameInstallSize(string exePath, TextBlock sourceText) {
+        string source = sourceText.Text;
+        if (!_gameInstallSizes.TryGetValue(exePath, out long? bytes)) {
+            bytes = await Task.Run(() => GameInstallSize.TryGet(exePath));
+            _gameInstallSizes[exePath] = bytes;
         }
+        if (bytes.HasValue) sourceText.Text = $"{source}  ·  {Maintenance.FormatBytes(bytes.Value)}";
+    }
 
+    // Native-shaped resolutions for the panel, read once; the list only changes if the screen does.
+    private List<(int Width, int Height)>? _gameResolutionsCache;
+    private List<(int Width, int Height)> GameResolutions => _gameResolutionsCache ??= DisplayRefreshRate.GetGameResolutions();
+
+    private FrameworkElement BuildGameResolutionSelector(GameProfile profile) {
+        bool set = profile.ResolutionWidth > 0 && GameResolutions.Contains((profile.ResolutionWidth, profile.ResolutionHeight));
+        var options = new List<(string, string?, bool, Action)> {
+            ("Default", "Leave the resolution as it is", !set, () => SaveGameResolution(profile, 0, 0))
+        };
+        foreach ((int width, int height) in GameResolutions) {
+            options.Add(($"{height}p", $"{width} × {height} while this game runs — for games that use the desktop resolution",
+                set && width == profile.ResolutionWidth && height == profile.ResolutionHeight,
+                () => SaveGameResolution(profile, width, height)));
+        }
+        return BuildSegmentTrack(options);
+    }
+
+    private void SaveGameResolution(GameProfile profile, int width, int height) {
+        profile.ResolutionWidth = width;
+        profile.ResolutionHeight = height;
+        _settings.Save();
+    }
+
+    // A label on the left (with an optional hint under it) and its control pushed to the right.
+    private FrameworkElement BuildLabeledRow(string label, string? hint, FrameworkElement control) {
+        var row = new Grid { Margin = new Thickness(0, 12, 0, 0) };
+        row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+        row.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+
+        var labels = new StackPanel { VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, 12, 0) };
+        var labelText = new TextBlock { Text = label, FontSize = 12 };
+        labelText.SetResourceReference(TextBlock.ForegroundProperty, "TextPrimaryBrush");
+        labels.Children.Add(labelText);
+        if (hint != null) {
+            var hintText = new TextBlock { Text = hint, FontSize = 10, Margin = new Thickness(0, 2, 0, 0) };
+            hintText.SetResourceReference(TextBlock.ForegroundProperty, "TextSecondaryBrush");
+            labels.Children.Add(hintText);
+        }
+        row.Children.Add(labels);
+
+        control.HorizontalAlignment = System.Windows.HorizontalAlignment.Right;
+        control.VerticalAlignment = VerticalAlignment.Center;
+        control.Margin = new Thickness(0);
+        Grid.SetColumn(control, 1);
+        row.Children.Add(control);
         return row;
+    }
+
+    // The full path lives in the tooltip; the card itself just says where the game came from.
+    private static string DescribeGameSource(string exePath) {
+        if (exePath.Contains(@"\steamapps\", StringComparison.OrdinalIgnoreCase)) return "Steam";
+        if (exePath.Contains(@"\Epic Games\", StringComparison.OrdinalIgnoreCase)) return "Epic Games";
+        if (exePath.Contains(@"\XboxGames\", StringComparison.OrdinalIgnoreCase)) return "Xbox";
+        string? folder = Path.GetFileName(Path.GetDirectoryName(exePath));
+        return string.IsNullOrEmpty(folder) ? exePath : folder;
     }
 
     private FrameworkElement BuildGameModeSelector(GameProfile profile) {
         (string Label, string Value)[] modes = {
-            ("Off", GameProfile.NoSwitch),
+            // Stored as "None" (don't switch), which leaves the mode chosen on the Performance page in charge.
+            ("Default", GameProfile.NoSwitch),
             ("Balanced", nameof(HpFanMode.Balanced)),
             ("Performance", nameof(HpFanMode.Performance)),
             ("Cool", nameof(HpFanMode.Cool)),
@@ -1341,7 +2270,7 @@ public partial class MainWindow : Window {
 
         return BuildSegmentTrack(modes.Select(m => (
             m.Label,
-            m.Value == GameProfile.NoSwitch ? "Don't switch modes for this game" : (string?)null,
+            m.Value == GameProfile.NoSwitch ? "Use the mode selected on the Performance page" : (string?)null,
             string.Equals(profile.Mode, m.Value, StringComparison.OrdinalIgnoreCase),
             (Action)(() => {
                 profile.Mode = m.Value;
@@ -1357,9 +2286,7 @@ public partial class MainWindow : Window {
         foreach (int rate in _refreshRates)
             options.Add(($"{rate}Hz", null, fixedRate && rate == profile.RefreshRateHz, () => SaveGameRefreshRate(profile, rate)));
 
-        FrameworkElement track = BuildSegmentTrack(options);
-        track.Margin = new Thickness(0, 8, 0, 0);
-        return track;
+        return BuildSegmentTrack(options);
     }
 
     private void SaveGameRefreshRate(GameProfile profile, int hz) {
@@ -1376,6 +2303,21 @@ public partial class MainWindow : Window {
             && string.Equals(_activeGameProfileExeName, Path.GetFileNameWithoutExtension(profile.ExecutablePath), StringComparison.OrdinalIgnoreCase)) {
             _activeGameMaxFan = false;
             MaxFanCheckBox.IsChecked = _preGameMaxFan;
+        }
+    }
+
+    private void SaveGameBoost(GameProfile profile, bool boost) {
+        profile.Boost = boost;
+        _settings.Save();
+
+        // Switching it for the game that's running right now takes effect immediately.
+        string exeName = Path.GetFileNameWithoutExtension(profile.ExecutablePath);
+        if (!string.Equals(_activeGameProfileExeName, exeName, StringComparison.OrdinalIgnoreCase)) return;
+        if (boost) {
+            _gameBoost.Start();
+            KeepGameBoosted(exeName);
+        } else {
+            _gameBoost.Stop();
         }
     }
 
@@ -1410,21 +2352,9 @@ public partial class MainWindow : Window {
             ApplyTypedFrameLimit(profile, input);
         };
 
-        var label = new TextBlock {
-            Text = "FPS cap", FontSize = 11, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, 8, 0)
-        };
-        label.SetResourceReference(TextBlock.ForegroundProperty, "TextSecondaryBrush");
-
-        var hint = new TextBlock {
-            Text = "empty = no cap", FontSize = 10, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(8, 0, 0, 0)
-        };
-        hint.SetResourceReference(TextBlock.ForegroundProperty, "TextSecondaryBrush");
-
-        var row = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 10, 0, 0) };
-        row.Children.Add(label);
+        var row = new StackPanel { Orientation = Orientation.Horizontal };
         row.Children.Add(inputBox);
         row.Children.Add(apply);
-        row.Children.Add(hint);
         return row;
     }
 
@@ -1763,11 +2693,17 @@ public partial class MainWindow : Window {
         _exitRequested = true;
         _pollTimer.Stop();
         Microsoft.Win32.SystemEvents.PowerModeChanged -= SystemEvents_PowerModeChanged;
+        Microsoft.Win32.SystemEvents.UserPreferenceChanged -= SystemEvents_UserPreferenceChanged;
         try {
-            UnregisterHotKey(new WindowInteropHelper(this).Handle, CycleModeHotkeyId);
+            UnregisterHotkeys();
         } catch {
             // Best-effort.
         }
+        // Reopens OneDrive if a game boost had closed it, and puts back anything else a running game changed.
+        _gameBoost.Stop();
+        _wifiTuning.Stop();
+        RestorePreGameResolution();
+
         // Max fan the app switched on for a game is the app's to undo, even on the way out.
         if (_activeGameMaxFan && !_preGameMaxFan) {
             try { _bios.SetMaxFanSpeed(false); } catch (HpBiosException) { }
