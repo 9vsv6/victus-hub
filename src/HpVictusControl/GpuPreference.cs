@@ -15,21 +15,6 @@ public static class GpuPreference {
     private const string PreferenceName = "GpuPreference";
     private const int HighPerformance = 2;
 
-    public static List<string> GetHighPerformanceApps() {
-        using RegistryKey? key = Registry.CurrentUser.OpenSubKey(KeyPath);
-        if (key == null) return new List<string>();
-
-        // Skips non-app entries such as DirectXUserGlobalSettings, and lists an app once even if it
-        // was saved under several spellings, preferring the backslash one.
-        return key.GetValueNames()
-            .Where(name => name.Contains('\\') || name.Contains('/'))
-            .Where(name => ReadPreference(key.GetValue(name) as string) == HighPerformance)
-            .GroupBy(PathNormalizer.Normalize, StringComparer.OrdinalIgnoreCase)
-            .Select(group => PathNormalizer.Normalize(group.OrderBy(name => name.Contains('/')).First()))
-            .OrderBy(name => Path.GetFileName(name), StringComparer.OrdinalIgnoreCase)
-            .ToList();
-    }
-
     public static bool IsHighPerformance(string exePath) {
         using RegistryKey? key = Registry.CurrentUser.OpenSubKey(KeyPath);
         if (key == null) return false;

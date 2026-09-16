@@ -2,11 +2,12 @@
 <assembly manifestVersion="1.0" xmlns="urn:schemas-microsoft-com:asm.v1">
   <assemblyIdentity version="1.0.0.0" name="HpVictusControl.app"/>
 
-  <!-- Writing fan levels through the HP BIOS WMI interface requires an elevated process. -->
+  <!-- The HP BIOS WMI interface needs admin, but Windows won't auto-start a requireAdministrator app
+       at sign-in, so the app launches as a normal user and hands off to an elevated copy (App.xaml.cs). -->
   <trustInfo xmlns="urn:schemas-microsoft-com:asm.v2">
     <security>
       <requestedPrivileges xmlns="urn:schemas-microsoft-com:asm.v3">
-        <requestedExecutionLevel level="requireAdministrator" uiAccess="false" />
+        <requestedExecutionLevel level="asInvoker" uiAccess="false" />
       </requestedPrivileges>
     </security>
   </trustInfo>

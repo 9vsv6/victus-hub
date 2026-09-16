@@ -489,6 +489,8 @@
                                        FontSize="11" Foreground="{DynamicResource TextSecondaryBrush}"/>
                             <TextBlock x:Name="GpuDetailText" Text="" Margin="0,4,0,0"
                                        FontSize="11" Foreground="{DynamicResource TextSecondaryBrush}" Visibility="Collapsed"/>
+                            <TextBlock x:Name="IntelGpuDetailText" Text="" Margin="0,4,0,0"
+                                       FontSize="11" Foreground="{DynamicResource TextSecondaryBrush}" Visibility="Collapsed"/>
                             <TextBlock x:Name="RamDetailText" Text="" Margin="0,4,0,0"
                                        FontSize="11" Foreground="{DynamicResource TextSecondaryBrush}"/>
                         </StackPanel>
@@ -537,7 +539,7 @@
                             <TextBlock Text="Games" Style="{StaticResource SectionHeader}"/>
                             <TextBlock TextWrapping="Wrap" FontSize="11" Margin="0,0,0,12"
                                        Foreground="{DynamicResource TextSecondaryBrush}"
-                                       Text="Pick a mode for each game. The app switches to it while the game runs and switches back when it closes."/>
+                                       Text="Pick a mode, refresh rate and FPS cap for each game. Mode, refresh rate and max fan apply while the game runs and are put back when it closes; the FPS cap is stored in the NVIDIA driver, the same as Control Panel's Max Frame Rate."/>
 
                             <Grid>
                                 <Grid.ColumnDefinitions>
@@ -621,38 +623,6 @@
                         </StackPanel>
                     </Border>
 
-                    <!-- Run apps on NVIDIA GPU -->
-                    <Border x:Name="GpuPreferenceCard" Style="{StaticResource Card}">
-                        <StackPanel>
-                            <TextBlock Text="Run apps on NVIDIA GPU" Style="{StaticResource SectionHeader}"/>
-                            <TextBlock TextWrapping="Wrap" FontSize="11" Margin="0,0,0,12"
-                                       Foreground="{DynamicResource TextSecondaryBrush}"
-                                       Text="Sets Windows' per-app graphics preference to High performance, so these apps render on the NVIDIA GPU instead of Intel graphics. Takes effect the next time each app starts, and uses more power and heat."/>
-
-                            <Grid>
-                                <Grid.ColumnDefinitions>
-                                    <ColumnDefinition Width="*"/>
-                                    <ColumnDefinition Width="*"/>
-                                </Grid.ColumnDefinitions>
-                                <Button Grid.Column="0" Content="All installed games" Style="{StaticResource PrimaryButton}"
-                                        Margin="0,0,8,0" Click="GpuApplyToGamesButton_Click"/>
-                                <Button Grid.Column="1" Content="All open apps" Style="{StaticResource SecondaryButton}"
-                                        Click="GpuApplyToOpenAppsButton_Click"/>
-                            </Grid>
-                            <Button Content="Add app..." Style="{StaticResource SecondaryButton}" Margin="0,8,0,0"
-                                    Click="GpuAddAppButton_Click"/>
-
-                            <TextBlock x:Name="GpuPreferenceStatusText" TextWrapping="Wrap" FontSize="11" Margin="0,10,0,0"
-                                       Foreground="{DynamicResource TextSecondaryBrush}" Visibility="Collapsed"/>
-
-                            <TextBlock x:Name="NoGpuPreferenceText" Text="No apps set to use the NVIDIA GPU yet." FontSize="12"
-                                       Foreground="{DynamicResource TextSecondaryBrush}" Margin="0,12,0,0"/>
-                            <StackPanel x:Name="GpuPreferenceListPanel" Margin="0,6,0,0"/>
-                            <Button x:Name="ClearGpuPreferencesButton" Content="Remove all" Style="{StaticResource SecondaryButton}"
-                                    Margin="0,8,0,0" Visibility="Collapsed" Click="ClearGpuPreferencesButton_Click"/>
-                        </StackPanel>
-                    </Border>
-
                 </StackPanel>
 
                 <!-- ===================== Drivers tab ===================== -->
@@ -712,7 +682,6 @@
                             <StackPanel x:Name="UpdatesListPanel" Margin="0,4,0,0"/>
                         </StackPanel>
                     </Border>
-
                 </StackPanel>
 
                 <!-- ===================== Settings tab ===================== -->
@@ -729,6 +698,20 @@
 
                             <CheckBox x:Name="AlwaysOnTopCheckBox" Content="Always on top" Style="{StaticResource GlowToggle}"
                                       Checked="AlwaysOnTopCheckBox_Changed" Unchecked="AlwaysOnTopCheckBox_Changed"/>
+                        </StackPanel>
+                    </Border>
+
+                    <!-- Sound -->
+                    <Border x:Name="SpeakerAwakeCard" Style="{StaticResource Card}">
+                        <StackPanel>
+                            <TextBlock Text="Sound" Style="{StaticResource SectionHeader}"/>
+                            <CheckBox x:Name="KeepSpeakersAwakeCheckBox" Content="Keep speakers awake" Style="{StaticResource GlowToggle}"
+                                      Checked="KeepSpeakersAwakeCheckBox_Changed" Unchecked="KeepSpeakersAwakeCheckBox_Changed"/>
+                            <TextBlock TextWrapping="Wrap" FontSize="11" Margin="0,4,0,0"
+                                       Foreground="{DynamicResource TextSecondaryBrush}"
+                                       Text="Stops the audio chip powering down after a few seconds of silence, which makes the next sound (like a UAC prompt's) start late. Uses a little more battery, and a Realtek driver update may undo it."/>
+                            <TextBlock x:Name="SpeakerAwakeStatusText" TextWrapping="Wrap" FontSize="11" Margin="0,8,0,0"
+                                       Foreground="{DynamicResource AccentBrush}" Visibility="Collapsed"/>
                         </StackPanel>
                     </Border>
 

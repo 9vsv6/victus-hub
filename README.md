@@ -13,12 +13,15 @@ tray icon that polls the BIOS every 2 seconds.
 - Manual fan speed per fan (best-effort — see note below)
 - Force max fan speed
 - Performance mode switch: Balanced / Performance / Cool
+- Per-game profiles: performance mode, display refresh rate, FPS cap, max fan while playing,
+  and which GPU the game runs on — applied when the game starts, put back when it closes
 
 ## Requirements
 
 - Windows 10/11, x64
 - [.NET 9 SDK](https://dotnet.microsoft.com/download/dotnet/9.0) to build
-- Must run **as Administrator** — the app's manifest requests elevation automatically
+- Needs **administrator** rights for the BIOS interface — the app asks for them itself (UAC
+  prompt) when you open it; "Start with Windows" gets them without a prompt via a scheduled task
 
 ## Build & run
 
@@ -27,8 +30,9 @@ dotnet build "HpVictusControl.sln" -c Release
 dotnet run --project "src\HpVictusControl\HpVictusControl.csproj"
 ```
 
-Or open `HpVictusControl.sln` in Visual Studio and hit Run — Windows will show the UAC prompt
-because of the elevation requirement in `app.manifest`.
+Or open `HpVictusControl.sln` in Visual Studio and hit Run — the app relaunches itself as
+administrator, so Windows shows a UAC prompt. To debug, run Visual Studio as administrator so the
+app doesn't hand off to a separate process.
 
 ## How it works
 
@@ -51,6 +55,14 @@ loop (doing so requires talking to the Embedded Controller directly through a ke
 which this project intentionally avoids for simplicity and safety). If manual speed doesn't
 stick on your model, "Force max fan speed" and the performance-mode switch are the reliable
 controls.
+
+**FPS cap**: the per-game frame limit is not enforced by this app — it's written into the NVIDIA
+driver's own profile database through `nvapi64.dll` (setting `0x10835002`, the same "Max Frame
+Rate" NVIDIA Control Panel writes), so the driver does the limiting and the cap survives with or
+without this app running. It only applies to games rendering on the NVIDIA GPU. The setting id is
+read back from the driver via `NvAPI_DRS_EnumAvailableSettingIds` rather than hard-coded on faith;
+measured on an RTX 3050 laptop GPU, an uncapped 1900 fps test render drops to exactly 30.0 fps at
+a 30 fps cap.
 
 **No "current mode" readout**: the BIOS interface exposes a way to *set* the performance mode
 but not to read back which one is currently active, so the UI's mode selector just defaults to

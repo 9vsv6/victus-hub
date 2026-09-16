@@ -10,6 +10,8 @@ public sealed class GameProfile {
     public string Name { get; set; } = "";
     public string ExecutablePath { get; set; } = "";
     public string Mode { get; set; } = "Performance";
+    public int RefreshRateHz { get; set; }
+    public bool MaxFan { get; set; }
     public bool IsScanned { get; set; }
 }
 
@@ -25,6 +27,7 @@ public sealed class AppSettings {
     public double TempAlertThreshold { get; set; } = 85;
     public bool AutoFanByTemp { get; set; }
     public bool ExitOnClose { get; set; }
+    public int? SpeakerIdleSecondsBeforeKeepAwake { get; set; }
     public DateTime? LastUpdateCheckUtc { get; set; }
     public int PerformanceRefreshRateHz { get; set; }
     public int BalancedRefreshRateHz { get; set; } = 60;

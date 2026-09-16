@@ -1,9 +1,10 @@
-using System.Diagnostics;
+﻿using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using System.Runtime.InteropServices;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Input;
 using System.Windows.Interop;
 using System.Windows.Media;
 using System.Windows.Threading;
@@ -19,6 +20,7 @@ using Color = System.Windows.Media.Color;
 using MessageBox = System.Windows.MessageBox;
 using Orientation = System.Windows.Controls.Orientation;
 using SolidColorBrush = System.Windows.Media.SolidColorBrush;
+using TextBox = System.Windows.Controls.TextBox;
 
 namespace HpVictusControl;
 
@@ -49,9 +51,8 @@ public partial class MainWindow : Window {
         ExitOnCloseCheckBox.IsChecked = _settings.ExitOnClose;
         AlwaysOnTopCheckBox.IsChecked = _settings.AlwaysOnTop;
 
-        GpuPreferenceCard.Visibility = NvidiaGpuSensor.IsAvailable ? Visibility.Visible : Visibility.Collapsed;
-        if (NvidiaGpuSensor.IsAvailable) RenderGpuPreferenceList();
-        AppVersionText.Text = $"Version {System.Reflection.Assembly.GetExecutingAssembly().GetName().Version}";
+        SpeakerAwakeCard.Visibility = SpeakerPowerSettings.IsSupported ? Visibility.Visible : Visibility.Collapsed;
+        KeepSpeakersAwakeCheckBox.IsChecked = SpeakerPowerSettings.IsKeptAwake();        AppVersionText.Text = $"Version {System.Reflection.Assembly.GetExecutingAssembly().GetName().Version}";
 
         _tray.ShowRequested += () => Dispatcher.Invoke(() => {
             ShowInTaskbar = true;
@@ -211,6 +212,35 @@ public partial class MainWindow : Window {
         _settings.Save();
     }
 
+    private bool _revertingSpeakerToggle;
+
+    private void KeepSpeakersAwakeCheckBox_Changed(object sender, RoutedEventArgs e) {
+        if (_initializing || _revertingSpeakerToggle) return;
+
+        bool keepAwake = KeepSpeakersAwakeCheckBox.IsChecked == true;
+        try {
+            if (keepAwake) {
+                int? previous = SpeakerPowerSettings.GetIdleSeconds();
+                if (previous > 0) {
+                    _settings.SpeakerIdleSecondsBeforeKeepAwake = previous;
+                    _settings.Save();
+                }
+                SpeakerPowerSettings.SetIdleSeconds(0);
+            } else {
+                // 5 seconds is the Realtek driver's default when no earlier value was saved.
+                SpeakerPowerSettings.SetIdleSeconds(_settings.SpeakerIdleSecondsBeforeKeepAwake ?? 5);
+            }
+            SpeakerAwakeStatusText.Text = "Restart Windows to apply this.";
+            SpeakerAwakeStatusText.Visibility = Visibility.Visible;
+        } catch (Exception ex) {
+            MessageBox.Show(this, $"Couldn't change the speaker setting: {ex.Message}", "HP Victus Control",
+                MessageBoxButton.OK, MessageBoxImage.Warning);
+            _revertingSpeakerToggle = true;
+            KeepSpeakersAwakeCheckBox.IsChecked = !keepAwake;
+            _revertingSpeakerToggle = false;
+        }
+    }
+
     private void AlwaysOnTopCheckBox_Changed(object sender, RoutedEventArgs e) {
         bool onTop = AlwaysOnTopCheckBox.IsChecked == true;
         Topmost = onTop;
@@ -325,9 +355,9 @@ public partial class MainWindow : Window {
             GpuUsagePanel.ToolTip = null;
         }
 
+        PopulateRefreshRateOptions();
         RenderGameProfilesList();
         ScanForGamesIfNoneSaved();
-        PopulateRefreshRateOptions();
         ShowLastCheckedTime();
 
         RefreshStats();
@@ -354,6 +384,7 @@ public partial class MainWindow : Window {
 
         RefreshBatteryStatus();
         RefreshGpuStats();
+        RefreshIntelGpuStats();
 
         if (!_bios.IsAvailable) return;
 
@@ -412,6 +443,22 @@ public partial class MainWindow : Window {
         BatteryStatusText.Text = $"Battery {percent}%  ·  {state}";
     }
 
+    private readonly IntelGpuSensor _intelGpu = new();
+    private bool _intelGpuQueryInFlight;
+
+    // Reading the GPU Engine counter category walks hundreds of per-process instances, so it runs off the UI thread.
+    private async void RefreshIntelGpuStats() {
+        if (!_intelGpu.IsAvailable || _intelGpuQueryInFlight) return;
+
+        _intelGpuQueryInFlight = true;
+        double? usage = await Task.Run(() => _intelGpu.TryReadUsagePercent());
+        _intelGpuQueryInFlight = false;
+
+        if (!usage.HasValue) return;
+        IntelGpuDetailText.Text = $"{_intelGpu.Name} {usage.Value:0}% usage";
+        IntelGpuDetailText.Visibility = Visibility.Visible;
+    }
+
     // nvidia-smi is a subprocess call, so this runs off the poll tick instead of blocking it.
     private bool _gpuStatsQueryInFlight;
 
@@ -428,7 +475,7 @@ public partial class MainWindow : Window {
         if (powerDraw.HasValue || clockMhz.HasValue) {
             string power = powerDraw.HasValue ? $"{powerDraw.Value:0}W" : "--W";
             string clock = clockMhz.HasValue ? $"{clockMhz.Value:0} MHz" : "-- MHz";
-            GpuDetailText.Text = $"GPU {power}  ·  {clock}";
+            GpuDetailText.Text = $"NVIDIA GPU {power}  ·  {clock}";
             GpuDetailText.Visibility = Visibility.Visible;
         }
         CheckTemperatureAlert("GPU", temperature, ref _gpuTempAlertActive);
@@ -789,8 +836,15 @@ public partial class MainWindow : Window {
                 if (nvidiaUpdate != null) updates.Add(nvidiaUpdate);
             }
 
+            UpdatesStatusText.Text = "Checking Intel directly for newer Intel drivers...";
+            List<IntelDriverMatch> intelMatches = await IntelDriverUpdateService.CheckAsync();
+            updates.AddRange(intelMatches.Where(match => match.IsNewer).Select(match => match.Latest));
+            string intelCurrent = string.Join(", ", intelMatches.Where(match => !match.IsNewer)
+                .Select(match => $"{match.DeviceName} {match.InstalledVersion}"));
+
             if (updates.Count == 0) {
-                UpdatesStatusText.Text = "You're up to date — no newer drivers or BIOS found for this model.";
+                UpdatesStatusText.Text = "You're up to date — no newer drivers or BIOS found for this model."
+                    + (intelCurrent.Length > 0 ? $" Intel confirms its latest is installed: {intelCurrent}." : "");
             } else {
                 _lastUpdates = updates;
                 UpdatesStatusText.Text = $"{updates.Count} update(s) available:";
@@ -1085,35 +1139,74 @@ public partial class MainWindow : Window {
     // just before it launched is restored.
     private string? _activeGameProfileExeName;
     private HpFanMode _preGameMode;
+    private bool _activeGameMaxFan;
+    private bool _preGameMaxFan;
 
     private void CheckGameProfiles() {
-        var tracked = new List<(string ExeName, string Name, HpFanMode Mode)>();
+        var tracked = new List<(string ExeName, string Name, HpFanMode? Mode, int RefreshRateHz, bool MaxFan)>();
         foreach (GameProfile profile in _settings.GameProfiles) {
-            if (!Enum.TryParse(profile.Mode, out HpFanMode mode)) continue;
+            HpFanMode? mode = Enum.TryParse(profile.Mode, out HpFanMode parsed) ? parsed : null;
+            int hz = _refreshRates.Contains(profile.RefreshRateHz) ? profile.RefreshRateHz : 0;
+            if (mode == null && hz == 0 && !profile.MaxFan) continue;
+
             string exeName = Path.GetFileNameWithoutExtension(profile.ExecutablePath);
-            if (exeName.Length > 0) tracked.Add((exeName, profile.Name, mode));
+            if (exeName.Length > 0) tracked.Add((exeName, profile.Name, mode, hz, profile.MaxFan));
         }
         if (tracked.Count == 0 && _activeGameProfileExeName == null) return;
 
         HashSet<string> running = GetRunningProcessNames();
 
         if (_activeGameProfileExeName != null) {
-            if (running.Contains(_activeGameProfileExeName)) return;
+            if (running.Contains(_activeGameProfileExeName)) {
+                KeepMaxFanAsserted();
+                return;
+            }
 
             string endedGame = _activeGameProfileExeName;
+            // Re-applying the earlier mode also puts back that mode's refresh rate.
             ApplyMode(_preGameMode);
+            if (_activeGameMaxFan) {
+                _activeGameMaxFan = false;
+                MaxFanCheckBox.IsChecked = _preGameMaxFan;
+            }
             _activeGameProfileExeName = null;
             _tray.ShowBalloon("HP Victus Control", $"{endedGame} closed — restored {_preGameMode} mode");
         }
 
-        foreach ((string exeName, string name, HpFanMode mode) in tracked) {
+        foreach ((string exeName, string name, HpFanMode? mode, int hz, bool maxFan) in tracked) {
             if (!running.Contains(exeName)) continue;
 
             _preGameMode = _currentMode;
-            ApplyMode(mode);
+            if (mode.HasValue) ApplyMode(mode.Value);
+            if (hz > 0) ApplyRefreshRate(hz);
+            if (maxFan) {
+                _preGameMaxFan = MaxFanCheckBox.IsChecked == true;
+                _activeGameMaxFan = true;
+                // The checkbox's own handler is what talks to the BIOS and the tray menu.
+                MaxFanCheckBox.IsChecked = true;
+                KeepMaxFanAsserted();
+            }
             _activeGameProfileExeName = exeName;
-            _tray.ShowBalloon("HP Victus Control", $"{name} detected — switched to {mode} mode");
+
+            var changes = new List<string>();
+            if (mode.HasValue) changes.Add($"{mode.Value} mode");
+            if (hz > 0) changes.Add($"{hz}Hz");
+            if (maxFan) changes.Add("max fan");
+            _tray.ShowBalloon("HP Victus Control", $"{name} detected — switched to {string.Join(", ", changes)}");
             break;
+        }
+    }
+
+    // The BIOS lets its own curve take the fans back over after a while — and whenever the
+    // performance mode changes — so while a max-fan game is running the request is re-sent as
+    // soon as the BIOS reports it off. Turning the switch off by hand stops that.
+    private void KeepMaxFanAsserted() {
+        if (!_activeGameMaxFan || MaxFanCheckBox.IsChecked != true) return;
+
+        try {
+            if (!_bios.GetMaxFanSpeed()) _bios.SetMaxFanSpeed(true);
+        } catch (HpBiosException) {
+            // Transient BIOS errors are normal under load; the next tick tries again.
         }
     }
 
@@ -1128,7 +1221,31 @@ public partial class MainWindow : Window {
 
     private readonly Dictionary<string, ImageSource?> _gameIconCache = new(StringComparer.OrdinalIgnoreCase);
 
+    // FPS caps live in the NVIDIA driver's own profile database rather than in settings.json.
+    // Opening a driver session costs ~200ms, so the list never waits for one: it renders with
+    // whatever's already known and redraws once the driver answers.
+    private Dictionary<string, int> _frameLimits = new(StringComparer.OrdinalIgnoreCase);
+    private readonly HashSet<string> _frameLimitsKnownFor = new(StringComparer.OrdinalIgnoreCase);
+    private bool _frameLimitsLoading;
+
+    private async void LoadFrameLimits() {
+        if (_frameLimitsLoading || !NvidiaFrameLimiter.IsAvailable) return;
+
+        List<string> paths = _settings.GameProfiles.Select(p => p.ExecutablePath).ToList();
+        if (paths.All(_frameLimitsKnownFor.Contains)) return;
+
+        _frameLimitsLoading = true;
+        Dictionary<string, int> limits = await Task.Run(() => NvidiaFrameLimiter.GetLimits(paths));
+        _frameLimitsLoading = false;
+
+        foreach (string path in paths) _frameLimitsKnownFor.Add(path);
+        foreach ((string path, int fps) in limits) _frameLimits[path] = fps;
+        RenderGameProfilesList();
+    }
+
     private void RenderGameProfilesList() {
+        LoadFrameLimits();
+
         GameProfilesListPanel.Children.Clear();
         NoGameProfilesText.Visibility = _settings.GameProfiles.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
 
@@ -1170,6 +1287,8 @@ public partial class MainWindow : Window {
         body.Children.Add(pathText);
 
         body.Children.Add(BuildGameModeSelector(profile));
+        if (_refreshRates.Count > 1) body.Children.Add(BuildGameRefreshRateSelector(profile));
+        if (NvidiaFrameLimiter.IsAvailable && installed) body.Children.Add(BuildGameFrameLimitSelector(profile));
 
         if (NvidiaGpuSensor.IsAvailable && installed) {
             var gpuToggle = new CheckBox {
@@ -1180,6 +1299,15 @@ public partial class MainWindow : Window {
             gpuToggle.Unchecked += (_, _) => SetGameGpuPreference(profile.ExecutablePath, false);
             body.Children.Add(gpuToggle);
         }
+
+        var maxFanToggle = new CheckBox {
+            Content = "Max fan while playing", Style = (Style)FindResource("GlowToggle"), Margin = new Thickness(0, 8, 0, 0),
+            ToolTip = "Runs both fans flat out while this game is open, then puts the fans back afterwards",
+            IsChecked = profile.MaxFan
+        };
+        maxFanToggle.Checked += (_, _) => SaveGameMaxFan(profile, true);
+        maxFanToggle.Unchecked += (_, _) => SaveGameMaxFan(profile, false);
+        body.Children.Add(maxFanToggle);
 
         Grid.SetColumn(body, 1);
         row.Children.Add(body);
@@ -1204,26 +1332,142 @@ public partial class MainWindow : Window {
     }
 
     private FrameworkElement BuildGameModeSelector(GameProfile profile) {
-        var panel = new StackPanel { Orientation = Orientation.Horizontal };
-        string group = $"GameMode_{Guid.NewGuid():N}";
-        (string Label, string Value)[] options = {
+        (string Label, string Value)[] modes = {
             ("Off", GameProfile.NoSwitch),
             ("Balanced", nameof(HpFanMode.Balanced)),
             ("Performance", nameof(HpFanMode.Performance)),
             ("Cool", nameof(HpFanMode.Cool)),
         };
 
-        foreach ((string label, string value) in options) {
+        return BuildSegmentTrack(modes.Select(m => (
+            m.Label,
+            m.Value == GameProfile.NoSwitch ? "Don't switch modes for this game" : (string?)null,
+            string.Equals(profile.Mode, m.Value, StringComparison.OrdinalIgnoreCase),
+            (Action)(() => {
+                profile.Mode = m.Value;
+                _settings.Save();
+            }))));
+    }
+
+    private FrameworkElement BuildGameRefreshRateSelector(GameProfile profile) {
+        bool fixedRate = _refreshRates.Contains(profile.RefreshRateHz);
+        var options = new List<(string, string?, bool, Action)> {
+            ("Auto", "Keep the refresh rate that goes with the mode", !fixedRate, () => SaveGameRefreshRate(profile, 0))
+        };
+        foreach (int rate in _refreshRates)
+            options.Add(($"{rate}Hz", null, fixedRate && rate == profile.RefreshRateHz, () => SaveGameRefreshRate(profile, rate)));
+
+        FrameworkElement track = BuildSegmentTrack(options);
+        track.Margin = new Thickness(0, 8, 0, 0);
+        return track;
+    }
+
+    private void SaveGameRefreshRate(GameProfile profile, int hz) {
+        profile.RefreshRateHz = hz;
+        _settings.Save();
+    }
+
+    private void SaveGameMaxFan(GameProfile profile, bool maxFan) {
+        profile.MaxFan = maxFan;
+        _settings.Save();
+
+        // Turning it off for the game that's currently driving the fans takes effect right away.
+        if (!maxFan && _activeGameMaxFan
+            && string.Equals(_activeGameProfileExeName, Path.GetFileNameWithoutExtension(profile.ExecutablePath), StringComparison.OrdinalIgnoreCase)) {
+            _activeGameMaxFan = false;
+            MaxFanCheckBox.IsChecked = _preGameMaxFan;
+        }
+    }
+
+    // The driver's frame limiter takes any rate from 20 to 1000 fps, so this is a plain number
+    // box rather than a list of presets: type a cap, or leave it empty for no cap at all.
+    private FrameworkElement BuildGameFrameLimitSelector(GameProfile profile) {
+        _frameLimits.TryGetValue(profile.ExecutablePath, out int current);
+
+        var input = new TextBox {
+            Width = 46, Text = current > 0 ? current.ToString() : "", MaxLength = 4,
+            BorderThickness = new Thickness(0), Background = System.Windows.Media.Brushes.Transparent,
+            FontSize = 12, TextAlignment = TextAlignment.Center, VerticalContentAlignment = VerticalAlignment.Center,
+            ToolTip = $"{NvidiaFrameLimiter.MinFps}–{NvidiaFrameLimiter.MaxFps} fps, or empty for no cap"
+        };
+        input.SetResourceReference(System.Windows.Controls.Control.ForegroundProperty, "TextPrimaryBrush");
+        input.SetResourceReference(System.Windows.Controls.Primitives.TextBoxBase.CaretBrushProperty, "TextPrimaryBrush");
+
+        var inputBox = new Border {
+            CornerRadius = new CornerRadius(9), Padding = new Thickness(8, 5, 8, 5),
+            VerticalAlignment = VerticalAlignment.Center, Child = input
+        };
+        inputBox.SetResourceReference(Border.BackgroundProperty, "TrackBrush");
+
+        var apply = new Button {
+            Content = "Apply", Style = (Style)FindResource("SecondaryButton"),
+            Padding = new Thickness(12, 6, 12, 6), Margin = new Thickness(8, 0, 0, 0)
+        };
+        apply.Click += (_, _) => ApplyTypedFrameLimit(profile, input);
+        input.KeyDown += (_, e) => {
+            if (e.Key != Key.Enter) return;
+            e.Handled = true;
+            ApplyTypedFrameLimit(profile, input);
+        };
+
+        var label = new TextBlock {
+            Text = "FPS cap", FontSize = 11, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, 8, 0)
+        };
+        label.SetResourceReference(TextBlock.ForegroundProperty, "TextSecondaryBrush");
+
+        var hint = new TextBlock {
+            Text = "empty = no cap", FontSize = 10, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(8, 0, 0, 0)
+        };
+        hint.SetResourceReference(TextBlock.ForegroundProperty, "TextSecondaryBrush");
+
+        var row = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 10, 0, 0) };
+        row.Children.Add(label);
+        row.Children.Add(inputBox);
+        row.Children.Add(apply);
+        row.Children.Add(hint);
+        return row;
+    }
+
+    private async void ApplyTypedFrameLimit(GameProfile profile, TextBox input) {
+        string typed = input.Text.Trim();
+        int fps = 0;
+
+        if (typed.Length > 0 && (!int.TryParse(typed, out fps) || fps < NvidiaFrameLimiter.MinFps || fps > NvidiaFrameLimiter.MaxFps)) {
+            MessageBox.Show(this,
+                $"Enter a frame rate between {NvidiaFrameLimiter.MinFps} and {NvidiaFrameLimiter.MaxFps}, or leave the box empty for no cap.",
+                "HP Victus Control", MessageBoxButton.OK, MessageBoxImage.Warning);
+            _frameLimits.TryGetValue(profile.ExecutablePath, out int previous);
+            input.Text = previous > 0 ? previous.ToString() : "";
+            return;
+        }
+
+        string path = profile.ExecutablePath;
+        input.IsEnabled = false;
+        // Writing the driver's profile database takes long enough to be felt on the UI thread.
+        bool applied = await Task.Run(() => NvidiaFrameLimiter.SetLimit(path, fps));
+        input.IsEnabled = true;
+
+        if (!applied) {
+            MessageBox.Show(this, "The NVIDIA driver didn't accept that frame rate limit.",
+                "HP Victus Control", MessageBoxButton.OK, MessageBoxImage.Warning);
+            return;
+        }
+
+        if (fps > 0) _frameLimits[path] = fps;
+        else _frameLimits.Remove(path);
+        input.Text = fps > 0 ? fps.ToString() : "";
+    }
+
+    private FrameworkElement BuildSegmentTrack(IEnumerable<(string Label, string? ToolTip, bool IsSelected, Action OnSelected)> options) {
+        var panel = new StackPanel { Orientation = Orientation.Horizontal };
+        string group = $"Segment_{Guid.NewGuid():N}";
+
+        foreach ((string label, string? toolTip, bool isSelected, Action onSelected) in options) {
             var radio = new RadioButton {
                 Content = label, GroupName = group, Style = (Style)FindResource("SegmentRadio"),
-                Padding = new Thickness(10, 5, 10, 5),
-                IsChecked = string.Equals(profile.Mode, value, StringComparison.OrdinalIgnoreCase)
+                Padding = new Thickness(10, 5, 10, 5), IsChecked = isSelected, ToolTip = toolTip
             };
-            if (value == GameProfile.NoSwitch) radio.ToolTip = "Don't switch modes for this game";
-            radio.Checked += (_, _) => {
-                profile.Mode = value;
-                _settings.Save();
-            };
+            radio.Checked += (_, _) => onSelected();
             panel.Children.Add(radio);
         }
 
@@ -1286,7 +1530,6 @@ public partial class MainWindow : Window {
             GameScanStatusText.Text = $"Couldn't change the GPU preference: {ex.Message}";
             GameScanStatusText.Visibility = Visibility.Visible;
         }
-        RenderGpuPreferenceCard();
     }
 
     private async void ScanForGamesButton_Click(object sender, RoutedEventArgs e) {
@@ -1391,166 +1634,6 @@ public partial class MainWindow : Window {
         _settings.GameProfiles.Add(new GameProfile { Name = name, ExecutablePath = executablePath, Mode = mode.ToString() });
         _settings.Save();
         RenderGameProfilesList();
-    }
-
-    // ----- Run apps on NVIDIA GPU -------------------------------------------------------------
-
-    // GPU preferences show in two places: the NVIDIA GPU card and each game's toggle.
-    private void RenderGpuPreferenceList() {
-        RenderGpuPreferenceCard();
-        RenderGameProfilesList();
-    }
-
-    private void RenderGpuPreferenceCard() {
-        GpuPreferenceListPanel.Children.Clear();
-
-        List<string> apps;
-        try {
-            apps = GpuPreference.GetHighPerformanceApps();
-        } catch {
-            apps = new List<string>();
-        }
-
-        NoGpuPreferenceText.Visibility = apps.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
-        ClearGpuPreferencesButton.Visibility = apps.Count == 0 ? Visibility.Collapsed : Visibility.Visible;
-
-        foreach (string exePath in apps) {
-            string name = _settings.GameProfiles
-                .FirstOrDefault(p => string.Equals(PathNormalizer.Normalize(p.ExecutablePath), exePath, StringComparison.OrdinalIgnoreCase))?.Name
-                ?? Path.GetFileNameWithoutExtension(exePath);
-
-            var row = new Grid { Margin = new Thickness(0, 6, 0, 6) };
-            row.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
-            row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
-            row.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
-
-            FrameworkElement icon = BuildAppIcon(exePath, name);
-            Grid.SetColumn(icon, 0);
-            row.Children.Add(icon);
-
-            var info = new StackPanel { Margin = new Thickness(12, 0, 0, 0) };
-            var nameText = new TextBlock { Text = name, FontWeight = FontWeights.SemiBold, FontSize = 12, TextWrapping = TextWrapping.Wrap };
-            nameText.SetResourceReference(TextBlock.ForegroundProperty, "TextPrimaryBrush");
-            info.Children.Add(nameText);
-            var pathText = new TextBlock { Text = exePath, FontSize = 10, Margin = new Thickness(0, 2, 0, 0), TextWrapping = TextWrapping.Wrap };
-            pathText.SetResourceReference(TextBlock.ForegroundProperty, "TextSecondaryBrush");
-            info.Children.Add(pathText);
-            Grid.SetColumn(info, 1);
-            row.Children.Add(info);
-
-            var removeButton = new Button {
-                Content = "Remove", Style = (Style)FindResource("SecondaryButton"),
-                Padding = new Thickness(12, 6, 12, 6), Margin = new Thickness(10, 0, 0, 0),
-                VerticalAlignment = VerticalAlignment.Center
-            };
-            removeButton.Click += (_, _) => {
-                try {
-                    GpuPreference.Remove(exePath);
-                } catch (Exception ex) {
-                    ShowGpuPreferenceStatus($"Couldn't remove {Path.GetFileName(exePath)}: {ex.Message}");
-                }
-                RenderGpuPreferenceList();
-            };
-            Grid.SetColumn(removeButton, 2);
-            row.Children.Add(removeButton);
-
-            GpuPreferenceListPanel.Children.Add(row);
-        }
-    }
-
-    private async void GpuApplyToGamesButton_Click(object sender, RoutedEventArgs e) {
-        var button = (Button)sender;
-        button.IsEnabled = false;
-        ShowGpuPreferenceStatus("Scanning Steam and Epic Games libraries...");
-
-        try {
-            List<DetectedGame> detected = await Task.Run(GameDetector.DetectInstalledGames);
-            MergeScannedGames(detected);
-            _settings.Save();
-            int count = ApplyHighPerformanceGpu(_settings.GameProfiles.Select(p => p.ExecutablePath));
-            ShowGpuPreferenceStatus(count == 0
-                ? "No installed Steam or Epic games, or tracked games, were found."
-                : $"Set {count} game(s) to use the NVIDIA GPU. Restart any that are already running.");
-        } catch (Exception ex) {
-            ShowGpuPreferenceStatus($"Couldn't apply: {ex.Message}");
-        } finally {
-            button.IsEnabled = true;
-            RenderGpuPreferenceList();
-        }
-    }
-
-    private void GpuApplyToOpenAppsButton_Click(object sender, RoutedEventArgs e) {
-        string windowsDir = Environment.GetFolderPath(Environment.SpecialFolder.Windows);
-        var paths = new List<string>();
-
-        foreach (Process process in Process.GetProcesses()) {
-            try {
-                if (process.Id == Environment.ProcessId || process.MainWindowHandle == IntPtr.Zero) continue;
-                string? path = process.MainModule?.FileName;
-                // Windows components and Store apps don't use this per-path setting.
-                if (string.IsNullOrEmpty(path)
-                    || path.StartsWith(windowsDir, StringComparison.OrdinalIgnoreCase)
-                    || path.Contains(@"\WindowsApps\", StringComparison.OrdinalIgnoreCase)) continue;
-                paths.Add(path);
-            } catch {
-                // Protected or already-exited process.
-            } finally {
-                process.Dispose();
-            }
-        }
-
-        int count = ApplyHighPerformanceGpu(paths);
-        ShowGpuPreferenceStatus(count == 0
-            ? "No open apps could be set."
-            : $"Set {count} open app(s) to use the NVIDIA GPU. Restart them for it to take effect.");
-        RenderGpuPreferenceList();
-    }
-
-    private void GpuAddAppButton_Click(object sender, RoutedEventArgs e) {
-        var dialog = new Microsoft.Win32.OpenFileDialog {
-            Title = "Select an app to run on the NVIDIA GPU",
-            Filter = "Applications (*.exe)|*.exe"
-        };
-        if (dialog.ShowDialog(this) != true) return;
-
-        string name = Path.GetFileNameWithoutExtension(dialog.FileName);
-        ShowGpuPreferenceStatus(ApplyHighPerformanceGpu(new[] { dialog.FileName }) == 1
-            ? $"{name} will use the NVIDIA GPU the next time it starts."
-            : $"Couldn't set {name}.");
-        RenderGpuPreferenceList();
-    }
-
-    private void ClearGpuPreferencesButton_Click(object sender, RoutedEventArgs e) {
-        MessageBoxResult confirm = MessageBox.Show(this,
-            "Remove the High performance GPU preference from every app in this list? They'll go back to letting Windows choose.",
-            "Run apps on NVIDIA GPU", MessageBoxButton.YesNo, MessageBoxImage.Question);
-        if (confirm != MessageBoxResult.Yes) return;
-
-        try {
-            foreach (string path in GpuPreference.GetHighPerformanceApps()) GpuPreference.Remove(path);
-            ShowGpuPreferenceStatus("Removed the NVIDIA GPU preference from all apps.");
-        } catch (Exception ex) {
-            ShowGpuPreferenceStatus($"Couldn't remove all: {ex.Message}");
-        }
-        RenderGpuPreferenceList();
-    }
-
-    private static int ApplyHighPerformanceGpu(IEnumerable<string> exePaths) {
-        int count = 0;
-        foreach (string path in exePaths.Distinct(StringComparer.OrdinalIgnoreCase)) {
-            try {
-                GpuPreference.SetHighPerformance(path);
-                count++;
-            } catch {
-                // Skip an entry that can't be written.
-            }
-        }
-        return count;
-    }
-
-    private void ShowGpuPreferenceStatus(string text) {
-        GpuPreferenceStatusText.Text = text;
-        GpuPreferenceStatusText.Visibility = Visibility.Visible;
     }
 
     // ----- About & support ------------------------------------------------------------------
@@ -1685,6 +1768,11 @@ public partial class MainWindow : Window {
         } catch {
             // Best-effort.
         }
+        // Max fan the app switched on for a game is the app's to undo, even on the way out.
+        if (_activeGameMaxFan && !_preGameMaxFan) {
+            try { _bios.SetMaxFanSpeed(false); } catch (HpBiosException) { }
+        }
+
         _tray.Dispose();
         _bios.Dispose();
         Close();
