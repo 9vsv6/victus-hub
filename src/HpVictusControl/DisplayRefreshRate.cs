@@ -108,32 +108,33 @@ public static class DisplayRefreshRate {
         return EnumDisplaySettingsW(null, ENUM_CURRENT_SETTINGS, ref current) ? (current.dmPelsWidth, current.dmPelsHeight) : null;
     }
 
-    /// <summary>
-    /// Resolutions worth offering per game: the same shape as the panel's native (largest) resolution, so
-    /// nothing gets stretched, largest first, at most <paramref name="limit"/>. Based on the native size
-    /// rather than the current one, so the list doesn't shrink while a game has the resolution lowered.
-    /// </summary>
-    public static List<(int Width, int Height)> GetGameResolutions(int limit = 4) {
+    /// <summary>Every distinct size the display reports, largest first.</summary>
+    public static List<(int Width, int Height)> GetAllResolutions() {
         var modes = new List<(int Width, int Height)>();
         int modeNum = 0;
         DEVMODE dm = NewDevMode();
         while (EnumDisplaySettingsW(null, modeNum, ref dm)) {
-            if (dm.dmPelsHeight > 0 && !modes.Contains((dm.dmPelsWidth, dm.dmPelsHeight))) modes.Add((dm.dmPelsWidth, dm.dmPelsHeight));
+            if (dm.dmPelsWidth > 0 && dm.dmPelsHeight > 0 && !modes.Contains((dm.dmPelsWidth, dm.dmPelsHeight)))
+                modes.Add((dm.dmPelsWidth, dm.dmPelsHeight));
             modeNum++;
             dm = NewDevMode();
         }
-        if (modes.Count == 0) return modes;
+        return modes.OrderByDescending(m => (long)m.Width * m.Height).ToList();
+    }
 
-        (int Width, int Height) native = modes.MaxBy(m => (long)m.Width * m.Height);
-        double aspect = (double)native.Width / native.Height;
-        // Tight enough to drop near-misses like 1360×768 beside 1366×768; one mode per height, since the
-        // game cards label them "768p".
-        return modes
-            .Where(m => m.Width >= 1024 && Math.Abs((double)m.Width / m.Height - aspect) < 0.005)
-            .OrderByDescending(m => (long)m.Width * m.Height)
-            .DistinctBy(m => m.Height)
-            .Take(limit)
-            .ToList();
+    /// <summary>
+    /// True when the display can actually run this size at some refresh rate. Windows refuses anything
+    /// else, so a typed resolution is checked against this before it's stored on a game.
+    /// </summary>
+    public static bool IsResolutionSupported(int width, int height) {
+        int modeNum = 0;
+        DEVMODE dm = NewDevMode();
+        while (EnumDisplaySettingsW(null, modeNum, ref dm)) {
+            if (dm.dmPelsWidth == width && dm.dmPelsHeight == height) return true;
+            modeNum++;
+            dm = NewDevMode();
+        }
+        return false;
     }
 
     /// <summary>

@@ -119,8 +119,9 @@ public static class HpDriverUpdateService {
 
         string? installedBios = InstalledDriverInfo.GetBiosVersion();
         List<(string DeviceName, string? DriverVersion)> installedDrivers = InstalledDriverInfo.GetSignedDrivers();
+        List<InstalledStorage.Disk> disks = InstalledStorage.GetDisks();
 
-        return deduped.Where(update => !IsAlreadyUpToDate(update, installedBios, installedDrivers)).ToList();
+        return deduped.Where(update => !IsAlreadyUpToDate(update, installedBios, installedDrivers, disks)).ToList();
     }
 
     public static DateTime ParseReleaseDate(string text) => ParseDate(text);
@@ -128,9 +129,13 @@ public static class HpDriverUpdateService {
     private static DateTime ParseDate(string text) => DateTime.TryParse(text, out DateTime dt) ? dt : DateTime.MinValue;
 
     private static bool IsAlreadyUpToDate(
-            HpDriverUpdate update, string? installedBios, List<(string DeviceName, string? DriverVersion)> installedDrivers) {
+            HpDriverUpdate update, string? installedBios, List<(string DeviceName, string? DriverVersion)> installedDrivers,
+            List<InstalledStorage.Disk> disks) {
 
         if (InstalledUpdateHistory.IsMarkedInstalled(update)) return true;
+
+        // Storage firmware: HP lists every drive its factory fitted to this model. See below.
+        if (IsStorageFirmwareHandled(update, disks)) return true;
 
         if (update.Category.Contains("BIOS", StringComparison.OrdinalIgnoreCase)) {
             // BIOS versions look like "F.08 Rev.A" — compare the "F.08" part against SMBIOSBIOSVersion.
@@ -186,6 +191,39 @@ public static class HpDriverUpdateService {
             if (candidate.DeviceName.ToLowerInvariant().Contains(vendor)) return candidate;
         }
         return null;
+    }
+
+    private static readonly string[] StorageKeywords = { "ssd", "solid state", "nvme", "hard drive", "hdd", "storage" };
+
+    private static readonly string[] StorageVendors = {
+        "samsung", "sandisk", "western digital", "wdc", "micron", "crucial", "kioxia", "toshiba",
+        "hynix", "solidigm", "seagate", "intel", "lite-on", "phison", "union memory", "ymtc",
+    };
+
+    /// <summary>
+    /// HP lists SSD firmware for every drive its factory fitted to this model — this unit has one
+    /// of them. An entry is hidden when the running firmware revision is already the one it offers
+    /// (Win32_DiskDrive reports both), or when its vendor matches none of the fitted drives, which
+    /// is how a SanDisk firmware package ends up in the list of a Samsung-equipped laptop.
+    /// </summary>
+    private static bool IsStorageFirmwareHandled(HpDriverUpdate update, List<InstalledStorage.Disk> disks) {
+        if (disks.Count == 0) return false; // couldn't read the drives — don't hide anything
+
+        string title = update.Title.ToLowerInvariant();
+        if (!StorageKeywords.Any(k => title.Contains(k))) return false;
+        if (!update.Category.Contains("Firmware", StringComparison.OrdinalIgnoreCase)) return false;
+
+        string version = update.Version ?? "";
+        foreach (InstalledStorage.Disk disk in disks) {
+            // Revisions look like "HPS4NKXM"; HP writes them as "HPS4NKXM Rev.A" or "HPS3N7A/HPS3T7A".
+            if (disk.FirmwareRevision.Length >= 4 && version.Contains(disk.FirmwareRevision, StringComparison.OrdinalIgnoreCase))
+                return true;
+        }
+
+        string? vendor = StorageVendors.FirstOrDefault(v => title.Contains(v));
+        if (vendor is null) return false; // nothing to check the drives against — leave it listed
+
+        return !disks.Any(d => d.Model.Contains(vendor, StringComparison.OrdinalIgnoreCase));
     }
 
     private static readonly string[] WirelessVendors = { "intel", "realtek", "mediatek", "qualcomm", "broadcom" };

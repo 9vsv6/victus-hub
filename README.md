@@ -18,7 +18,10 @@ tray icon that polls the BIOS every 2 seconds.
   put back when it closes; optional Wi-Fi tuning (background scanning off) while any game runs
 - Configurable global shortcuts for max fan and cycling the performance mode
 - Keeps Windows' power plan in step with the selected mode
-- Driver & BIOS updates from HP, NVIDIA and Intel in a sortable table, with a battery/charger
+- Driver & BIOS updates from HP, NVIDIA and Intel with filters by type, search, sorting and a
+  details pane per update (offered vs installed version, size, source). Entries for hardware this
+  unit doesn't have are filtered out — wireless radios from other configurations, and SSD firmware
+  for drives that aren't fitted or that already run the offered revision. Plus a battery/charger
   safety check before BIOS installs and automatic cleanup of downloaded installers
 - System page: laptop details, battery health, BIOS graphics switch (where the model has one),
   fan test, shader cache cleanup

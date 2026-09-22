@@ -1,4 +1,4 @@
-﻿using System.Diagnostics;
+using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using System.Runtime.InteropServices;
@@ -21,6 +21,8 @@ using MessageBox = System.Windows.MessageBox;
 using Orientation = System.Windows.Controls.Orientation;
 using SolidColorBrush = System.Windows.Media.SolidColorBrush;
 using TextBox = System.Windows.Controls.TextBox;
+using Point = System.Windows.Point;
+using Size = System.Windows.Size;
 using KeyEventArgs = System.Windows.Input.KeyEventArgs;
 
 namespace HpVictusControl;
@@ -366,23 +368,31 @@ public partial class MainWindow : Window {
         _settings.Save();
     }
 
-    // Two cards side by side need roughly 300px each; below that the fan sliders and the stat
-    // grid get cramped, so the cards stack instead.
-    private const double SideBySideMinWidth = 620;
-    private bool? _performanceColumnsSideBySide;
+    // ----- Temperature dials -----
 
-    private void PerformanceColumnsGrid_SizeChanged(object sender, SizeChangedEventArgs e) {
-        bool sideBySide = e.NewSize.Width >= SideBySideMinWidth;
-        if (_performanceColumnsSideBySide == sideBySide) return;
-        _performanceColumnsSideBySide = sideBySide;
+    // The dial is a half circle from 14,76 to 106,76 (radius 46) drawn over 0–100°C, the range the
+    // CPU actually works in: 100°C is where this chip starts slowing itself down to cool off.
+    private const double GaugeMaxCelsius = 100;
 
-        Grid.SetColumnSpan(LiveStatsCard, sideBySide ? 1 : 2);
-        LiveStatsCard.Margin = new Thickness(0, 0, sideBySide ? 7 : 0, 14);
+    private void UpdateTemperatureGauge(System.Windows.Shapes.Path arc, double? celsius) {
+        if (celsius is not double value || value <= 0) {
+            arc.Data = null;
+            return;
+        }
 
-        Grid.SetRow(FanControlCard, sideBySide ? 0 : 1);
-        Grid.SetColumn(FanControlCard, sideBySide ? 1 : 0);
-        Grid.SetColumnSpan(FanControlCard, sideBySide ? 1 : 2);
-        FanControlCard.Margin = new Thickness(sideBySide ? 7 : 0, 0, 0, 14);
+        double fraction = Math.Clamp(value / GaugeMaxCelsius, 0, 1);
+        const double centreX = 60, centreY = 76, radius = 46;
+        double angle = Math.PI * (1 - fraction); // π (left) → 0 (right)
+        var end = new Point(centreX + radius * Math.Cos(angle), centreY - radius * Math.Sin(angle));
+
+        var figure = new PathFigure { StartPoint = new Point(centreX - radius, centreY) };
+        figure.Segments.Add(new ArcSegment(end, new Size(radius, radius), 0, fraction > 0.5,
+            SweepDirection.Clockwise, isStroked: true));
+        arc.Data = new PathGeometry(new[] { figure });
+
+        // Green while there's headroom, amber once it's hot, red at the point it throttles.
+        string brushKey = value >= 95 ? "GaugeHotBrush" : value >= 85 ? "GaugeWarmBrush" : "AccentBrush";
+        arc.SetResourceReference(System.Windows.Shapes.Shape.StrokeProperty, brushKey);
     }
 
     // The strip beside the section tabs, so temperatures and the active mode stay in view
@@ -545,6 +555,8 @@ public partial class MainWindow : Window {
             ("TextPrimaryBrush", Color.FromRgb(0x1B, 0x1F, 0x24), Color.FromRgb(0xF2, 0xF3, 0xF5)),
             ("TextSecondaryBrush", Color.FromRgb(0x8A, 0x8F, 0x98), Color.FromRgb(0x9A, 0xA0, 0xAA)),
             ("GlowFillBrush", Color.FromRgb(0xE8, 0xF9, 0xEF), Color.FromRgb(0x1B, 0x33, 0x23)),
+            ("GaugeWarmBrush", Color.FromRgb(0xD9, 0x77, 0x06), Color.FromRgb(0xEF, 0x9F, 0x27)),
+            ("GaugeHotBrush", Color.FromRgb(0xDC, 0x26, 0x26), Color.FromRgb(0xE2, 0x4B, 0x4A)),
         };
 
         foreach ((string key, Color light, Color darkColor) in palette)
@@ -571,7 +583,34 @@ public partial class MainWindow : Window {
         return brush;
     }
 
+    // Without this the tray icon sits behind Windows 11's "^" chevron on a machine that hasn't seen
+    // it before: started minimized, the app then has no window and no visible icon at all.
+    private void PromoteTrayIconOnce(bool retry = true) {
+        if (_settings.TrayIconPromoted) return;
+
+        TrayPromotion.Result result = TrayPromotion.TryPromoteOwnIcon();
+        if (result == TrayPromotion.Result.NoEntry) {
+            // Explorer writes the entry just after the icon first appears, so give it a moment.
+            if (!retry) return;
+            var later = new DispatcherTimer { Interval = TimeSpan.FromSeconds(5) };
+            later.Tick += (_, _) => { later.Stop(); PromoteTrayIconOnce(retry: false); };
+            later.Start();
+            return;
+        }
+
+        if (result == TrayPromotion.Result.Promoted) {
+            // Explorer only reads the setting when the icon is added, and it ignores a re-add in the
+            // same breath as the write, so the icon goes away and comes back a moment later instead.
+            var readd = new DispatcherTimer { Interval = TimeSpan.FromSeconds(2) };
+            readd.Tick += (_, _) => { readd.Stop(); _tray.Refresh(); };
+            readd.Start();
+        }
+        _settings.TrayIconPromoted = true;
+        _settings.Save();
+    }
+
     private void MainWindow_Loaded(object sender, RoutedEventArgs e) {
+        PromoteTrayIconOnce();
         _bios.Connect();
 
         if (!_bios.IsAvailable) {
@@ -656,6 +695,7 @@ public partial class MainWindow : Window {
             }
         }
         TemperatureText.Text = tempText;
+        UpdateTemperatureGauge(CpuGaugeArc, cpuTempValue);
         UpdateSectionStatus();
         CheckTemperatureAlert("CPU", cpuTempValue, ref _cpuTempAlertActive);
         _lastCpuTempForFan = cpuTempValue;
@@ -741,6 +781,7 @@ public partial class MainWindow : Window {
         _gpuStatsQueryInFlight = false;
 
         GpuTempText.Text = temperature.HasValue ? $"{temperature.Value:0}°C" : "N/A";
+        UpdateTemperatureGauge(GpuGaugeArc, temperature);
         UpdateSectionStatus();
         GpuUsageText.Text = utilization.HasValue ? $"{utilization.Value:0}%" : "N/A";
 
@@ -1057,6 +1098,9 @@ public partial class MainWindow : Window {
         public required HpDriverUpdate Update;
         public required CheckBox SelectCheckBox;
         public required Button DownloadButton;
+        public required Border RowBorder;
+        public required Grid RowGrid;
+        public required TextBlock DateText;
         public required StackPanel ActionPanel;
         public string? DownloadedPath;
         public bool IsBusy;
@@ -1094,6 +1138,8 @@ public partial class MainWindow : Window {
         UpdatesListPanel.Children.Clear();
         _updateEntries.Clear();
         _lastUpdates = new List<HpDriverUpdate>();
+        _downloadedPaths.Clear();
+        CloseUpdateDetails();
         UpdatesTableCard.Visibility = Visibility.Collapsed;
         UpdatesTitleText.Text = "Driver & BIOS updates";
         UpdatesStatusText.Text = "Checking HP's support site for your exact model...";
@@ -1139,81 +1185,135 @@ public partial class MainWindow : Window {
         }
     }
 
-    // ----- Updates table: columns, sorting, type tags -----
+    // ----- Updates list: filters, search, sorting, type tags -----
 
     private enum UpdateSortColumn { Name, Type, Version, Size, Released }
 
+    private enum UpdateFilter { All, Recommended, Bios, Firmware, Driver, Software, Other, Downloaded }
+
     private UpdateSortColumn _updateSort = UpdateSortColumn.Released;
     private bool _updateSortDescending = true;
-    private readonly List<Grid> _updateTableGrids = new();
-    private bool _updateTableCompact;
+    private UpdateFilter _updateFilter = UpdateFilter.All;
+    private string _updateSearch = "";
+    private HpDriverUpdate? _shownUpdate;
 
-    private const int VersionColumn = 3;
-    private const int SizeColumn = 4;
+    // Downloads survive re-rendering (and filtering a row out), so the paths live here, not in the rows.
+    private readonly Dictionary<HpDriverUpdate, string> _downloadedPaths = new();
 
-    // Checkbox, name, type, version, size, released, action. The action column is a fixed width
-    // so rows line up whether they show "Download" or "Open folder" + "Run installer".
-    private GridLength[] UpdateColumnWidths() => new[] {
-        new GridLength(34), new GridLength(1, GridUnitType.Star), new GridLength(130),
-        new GridLength(_updateTableCompact ? 0 : 130), new GridLength(_updateTableCompact ? 0 : 80),
-        new GridLength(110), new GridLength(220)
+    // One button cycles the order instead of five clickable column headers.
+    private static readonly (UpdateSortColumn Column, bool Descending, string Label)[] UpdateSortCycle = {
+        (UpdateSortColumn.Released, true, "Newest first"),
+        (UpdateSortColumn.Released, false, "Oldest first"),
+        (UpdateSortColumn.Name, false, "Name A→Z"),
+        (UpdateSortColumn.Type, false, "By type"),
+        (UpdateSortColumn.Size, true, "Largest first"),
     };
 
-    private void ApplyUpdateColumns(Grid grid) {
-        GridLength[] widths = UpdateColumnWidths();
-        if (grid.ColumnDefinitions.Count != widths.Length) {
-            grid.ColumnDefinitions.Clear();
-            foreach (GridLength width in widths) grid.ColumnDefinitions.Add(new ColumnDefinition { Width = width });
-            return;
-        }
-        for (int i = 0; i < widths.Length; i++) grid.ColumnDefinitions[i].Width = widths[i];
-    }
-
-    // Version and size are the first things to give up their room when the window is narrow.
-    private void UpdatesListPanel_SizeChanged(object sender, SizeChangedEventArgs e) {
-        bool compact = e.NewSize.Width < 820;
-        if (compact == _updateTableCompact) return;
-        _updateTableCompact = compact;
-
-        foreach (Grid grid in _updateTableGrids.Append(UpdatesHeaderGrid)) {
-            ApplyUpdateColumns(grid);
-            SetCompactCellVisibility(grid);
-        }
-    }
-
-    // A zero-width column doesn't clip what's in it, so the cells themselves are hidden too.
-    private void SetCompactCellVisibility(Grid grid) {
-        foreach (UIElement child in grid.Children) {
-            int column = Grid.GetColumn(child);
-            if (column is VersionColumn or SizeColumn)
-                child.Visibility = _updateTableCompact ? Visibility.Collapsed : Visibility.Visible;
-        }
-    }
-
-    private void UpdatesHeader_Click(object sender, System.Windows.Input.MouseButtonEventArgs e) {
-        if (sender is not FrameworkElement { Tag: string tag } || !Enum.TryParse(tag, out UpdateSortColumn column)) return;
-
-        if (column == _updateSort) {
-            _updateSortDescending = !_updateSortDescending;
-        } else {
-            _updateSort = column;
-            // Newest and biggest first; names, types and versions read naturally A→Z.
-            _updateSortDescending = column is UpdateSortColumn.Released or UpdateSortColumn.Size;
-        }
+    private void UpdateSortButton_Click(object sender, RoutedEventArgs e) {
+        int current = Array.FindIndex(UpdateSortCycle, x => x.Column == _updateSort && x.Descending == _updateSortDescending);
+        (_updateSort, _updateSortDescending, _) = UpdateSortCycle[(current + 1) % UpdateSortCycle.Length];
         if (_lastUpdates.Count > 0) RenderUpdateRows(_lastUpdates);
     }
 
-    private void RefreshUpdateHeaders() {
-        (TextBlock Header, UpdateSortColumn Column, string Label)[] headers = {
-            (NameHeaderText, UpdateSortColumn.Name, "Name"), (TypeHeaderText, UpdateSortColumn.Type, "Type"),
-            (VersionHeaderText, UpdateSortColumn.Version, "Version"), (SizeHeaderText, UpdateSortColumn.Size, "Size"),
-            (ReleasedHeaderText, UpdateSortColumn.Released, "Released"),
+    private void UpdateSearchBox_TextChanged(object sender, TextChangedEventArgs e) {
+        _updateSearch = UpdateSearchBox.Text.Trim();
+        UpdateSearchHint.Visibility = _updateSearch.Length == 0 ? Visibility.Visible : Visibility.Collapsed;
+        if (_lastUpdates.Count > 0) RenderUpdateRows(_lastUpdates);
+    }
+
+    // BIOS, firmware and drivers are the ones worth installing; HP's utilities are optional extras.
+    private static bool IsRecommendedUpdate(HpDriverUpdate update) =>
+        DescribeUpdateType(update.Category).Kind is UpdateKind.Bios or UpdateKind.Firmware or UpdateKind.Driver;
+
+    private bool PassesUpdateFilter(HpDriverUpdate update) {
+        UpdateKind kind = DescribeUpdateType(update.Category).Kind;
+        bool matchesFilter = _updateFilter switch {
+            UpdateFilter.All => true,
+            UpdateFilter.Recommended => IsRecommendedUpdate(update),
+            UpdateFilter.Bios => kind == UpdateKind.Bios,
+            UpdateFilter.Firmware => kind == UpdateKind.Firmware,
+            UpdateFilter.Driver => kind == UpdateKind.Driver,
+            UpdateFilter.Software => kind == UpdateKind.Software,
+            UpdateFilter.Other => kind == UpdateKind.Other,
+            _ => _downloadedPaths.ContainsKey(update),
         };
-        foreach ((TextBlock header, UpdateSortColumn column, string label) in headers) {
-            bool active = column == _updateSort;
-            header.Text = active ? $"{label} {(_updateSortDescending ? "↓" : "↑")}" : label;
-            header.SetResourceReference(TextBlock.ForegroundProperty, active ? "AccentBrush" : "TextSecondaryBrush");
+        if (!matchesFilter) return false;
+        if (_updateSearch.Length == 0) return true;
+
+        return update.Title.Contains(_updateSearch, StringComparison.CurrentCultureIgnoreCase)
+            || update.Category.Contains(_updateSearch, StringComparison.CurrentCultureIgnoreCase)
+            || (update.Version ?? "").Contains(_updateSearch, StringComparison.CurrentCultureIgnoreCase);
+    }
+
+    private void RenderUpdateFilters(List<HpDriverUpdate> updates) {
+        UpdateFiltersPanel.Children.Clear();
+
+        AddFilterGroupLabel("Show", isFirst: true);
+        AddFilterRow(UpdateFilter.All, "All updates", updates.Count);
+        AddFilterRow(UpdateFilter.Recommended, "Recommended", updates.Count(IsRecommendedUpdate));
+
+        AddFilterGroupLabel("Type");
+        (UpdateFilter Filter, string Label, UpdateKind Kind)[] kinds = {
+            (UpdateFilter.Bios, "BIOS", UpdateKind.Bios), (UpdateFilter.Firmware, "Firmware", UpdateKind.Firmware),
+            (UpdateFilter.Driver, "Drivers", UpdateKind.Driver), (UpdateFilter.Software, "Software", UpdateKind.Software),
+            (UpdateFilter.Other, "Other", UpdateKind.Other),
+        };
+        foreach ((UpdateFilter filter, string label, UpdateKind kind) in kinds) {
+            int count = updates.Count(u => DescribeUpdateType(u.Category).Kind == kind);
+            // An empty type is left out entirely, unless it's the filter the user is looking at.
+            if (count > 0 || _updateFilter == filter) AddFilterRow(filter, label, count);
         }
+
+        if (_downloadedPaths.Count > 0 || _updateFilter == UpdateFilter.Downloaded) {
+            AddFilterGroupLabel("State");
+            AddFilterRow(UpdateFilter.Downloaded, "Downloaded", updates.Count(_downloadedPaths.ContainsKey));
+        }
+    }
+
+    private void AddFilterGroupLabel(string text, bool isFirst = false) {
+        var label = new TextBlock {
+            Text = text.ToUpperInvariant(), FontSize = 10, FontWeight = FontWeights.SemiBold,
+            Margin = new Thickness(8, isFirst ? 6 : 12, 8, 4)
+        };
+        label.SetResourceReference(TextBlock.ForegroundProperty, "TextSecondaryBrush");
+        UpdateFiltersPanel.Children.Add(label);
+    }
+
+    private void AddFilterRow(UpdateFilter filter, string label, int count) {
+        bool active = _updateFilter == filter;
+
+        var grid = new Grid();
+        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+
+        var text = new TextBlock {
+            Text = label, FontSize = 12, VerticalAlignment = VerticalAlignment.Center,
+            FontWeight = active ? FontWeights.SemiBold : FontWeights.Normal, TextTrimming = TextTrimming.CharacterEllipsis
+        };
+        text.SetResourceReference(TextBlock.ForegroundProperty, active ? "AccentBrush" : "TextPrimaryBrush");
+        grid.Children.Add(text);
+
+        var countText = new TextBlock { Text = count.ToString(), FontSize = 11, VerticalAlignment = VerticalAlignment.Center };
+        countText.SetResourceReference(TextBlock.ForegroundProperty, active ? "AccentBrush" : "TextSecondaryBrush");
+        var pill = new Border {
+            CornerRadius = new CornerRadius(6), Padding = new Thickness(6, 1, 6, 1),
+            VerticalAlignment = VerticalAlignment.Center, Child = countText
+        };
+        pill.SetResourceReference(Border.BackgroundProperty, "TrackBrush");
+        Grid.SetColumn(pill, 1);
+        grid.Children.Add(pill);
+
+        var rowBorder = new Border {
+            CornerRadius = new CornerRadius(7), Padding = new Thickness(8, 7, 8, 7), Margin = new Thickness(0, 1, 0, 1),
+            Background = System.Windows.Media.Brushes.Transparent, Cursor = System.Windows.Input.Cursors.Hand, Child = grid
+        };
+        if (active) rowBorder.SetResourceReference(Border.BackgroundProperty, "CardBackgroundBrush");
+        rowBorder.MouseLeftButtonUp += (_, _) => {
+            if (_updateFilter == filter) return;
+            _updateFilter = filter;
+            if (_lastUpdates.Count > 0) RenderUpdateRows(_lastUpdates);
+        };
+        UpdateFiltersPanel.Children.Add(rowBorder);
     }
 
     private enum UpdateKind { Bios, Firmware, Driver, Software, Other }
@@ -1271,18 +1371,18 @@ public partial class MainWindow : Window {
         return match.Groups[2].Value.ToUpperInvariant() switch { "KB" => value / 1024, "GB" => value * 1024, _ => value };
     }
 
+    private static string OrDash(string? text) => string.IsNullOrWhiteSpace(text) || text == "N/A" ? "—" : text;
+
     private void RenderUpdateRows(List<HpDriverUpdate> updates) {
-        // Re-sorting rebuilds the rows, so carry over what the user already ticked and downloaded.
+        // Re-sorting and filtering rebuild the rows, so carry over what the user already ticked.
         HashSet<HpDriverUpdate> selected = _updateEntries.Where(x => x.SelectCheckBox.IsChecked == true).Select(x => x.Update).ToHashSet();
-        Dictionary<HpDriverUpdate, string> downloaded = _updateEntries
-            .Where(x => x.DownloadedPath != null).ToDictionary(x => x.Update, x => x.DownloadedPath!);
 
         UpdatesListPanel.Children.Clear();
         _updateEntries.Clear();
-        _updateTableGrids.Clear();
-        ApplyUpdateColumns(UpdatesHeaderGrid);
-        SetCompactCellVisibility(UpdatesHeaderGrid);
-        RefreshUpdateHeaders();
+
+        RenderUpdateFilters(updates);
+        UpdateSortButton.Content = UpdateSortCycle
+            .First(x => x.Column == _updateSort && x.Descending == _updateSortDescending).Label;
 
         IEnumerable<HpDriverUpdate> ordered = _updateSort switch {
             UpdateSortColumn.Name => updates.OrderBy(u => u.Title, StringComparer.CurrentCultureIgnoreCase),
@@ -1293,92 +1393,240 @@ public partial class MainWindow : Window {
         };
         if (_updateSortDescending) ordered = ordered.Reverse();
 
+        List<HpDriverUpdate> visible = ordered.Where(PassesUpdateFilter).ToList();
         bool first = true;
-        foreach (HpDriverUpdate update in ordered) {
+        foreach (HpDriverUpdate update in visible) {
             UpdateEntry entry = AddUpdateRow(update, first);
             first = false;
 
             if (selected.Contains(update)) entry.SelectCheckBox.IsChecked = true;
-            if (downloaded.TryGetValue(update, out string? path)) {
+            if (_downloadedPaths.TryGetValue(update, out string? path)) {
                 entry.DownloadedPath = path;
                 ShowDownloadedButtons(entry);
             }
         }
+
+        if (visible.Count == 0) {
+            var empty = new TextBlock {
+                Text = "Nothing matches this filter.", FontSize = 12, Margin = new Thickness(0, 24, 0, 24),
+                HorizontalAlignment = System.Windows.HorizontalAlignment.Center
+            };
+            empty.SetResourceReference(TextBlock.ForegroundProperty, "TextSecondaryBrush");
+            UpdatesListPanel.Children.Add(empty);
+        }
+
+        // The open details pane belongs to a row that may have just been filtered away.
+        if (_shownUpdate != null && !visible.Contains(_shownUpdate)) CloseUpdateDetails();
 
         UpdateBulkButtonsState();
     }
 
     private UpdateEntry AddUpdateRow(HpDriverUpdate update, bool isFirst) {
         var row = new Grid();
-        ApplyUpdateColumns(row);
-        _updateTableGrids.Add(row);
+        foreach (GridLength width in new[] {
+            new GridLength(30), new GridLength(1, GridUnitType.Star), new GridLength(100), new GridLength(200)
+        }) row.ColumnDefinitions.Add(new ColumnDefinition { Width = width });
 
         var selectCheckBox = new CheckBox { Style = (Style)FindResource("ModernCheckBox"), VerticalAlignment = VerticalAlignment.Center };
         row.Children.Add(selectCheckBox);
 
-        var nameText = new TextBlock {
-            Text = update.Title, FontWeight = FontWeights.SemiBold, FontSize = 12, TextWrapping = TextWrapping.Wrap,
-            VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, 12, 0)
-        };
-        nameText.SetResourceReference(TextBlock.ForegroundProperty, "TextPrimaryBrush");
-        Grid.SetColumn(nameText, 1);
-        row.Children.Add(nameText);
-
         (string typeLabel, UpdateKind kind) = DescribeUpdateType(update.Category);
         (Color tagBackground, Color tagForeground) = UpdateTagColors(kind);
         var tag = new Border {
-            Background = new SolidColorBrush(tagBackground), CornerRadius = new CornerRadius(6), Padding = new Thickness(8, 3, 8, 3),
-            HorizontalAlignment = System.Windows.HorizontalAlignment.Left, VerticalAlignment = VerticalAlignment.Center,
-            Margin = new Thickness(0, 0, 10, 0), ToolTip = update.Category,
+            Background = new SolidColorBrush(tagBackground), CornerRadius = new CornerRadius(6), Padding = new Thickness(7, 2, 7, 2),
+            VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, 8, 0), ToolTip = update.Category,
             Child = new TextBlock {
-                Text = typeLabel, FontSize = 11, FontWeight = FontWeights.SemiBold,
+                Text = typeLabel, FontSize = 10, FontWeight = FontWeights.SemiBold,
                 Foreground = new SolidColorBrush(tagForeground), TextTrimming = TextTrimming.CharacterEllipsis
             }
         };
-        Grid.SetColumn(tag, 2);
-        row.Children.Add(tag);
 
-        AddTableCell(row, 3, string.IsNullOrWhiteSpace(update.Version) || update.Version == "N/A" ? "—" : update.Version);
-        AddTableCell(row, 4, string.IsNullOrWhiteSpace(update.FileSize) ? "—" : update.FileSize);
-        AddTableCell(row, 5, string.IsNullOrWhiteSpace(update.ReleaseDate) ? "—" : update.ReleaseDate);
+        // Wrapping rather than trimming: with the details pane open there isn't much room, and a
+        // driver name cut to "NVI..." tells the user nothing.
+        var nameText = new TextBlock {
+            Text = update.Title, FontWeight = FontWeights.SemiBold, FontSize = 12, ToolTip = update.Title,
+            VerticalAlignment = VerticalAlignment.Center, TextWrapping = TextWrapping.Wrap
+        };
+        nameText.SetResourceReference(TextBlock.ForegroundProperty, "TextPrimaryBrush");
+
+        var titleLine = new DockPanel { LastChildFill = true };
+        DockPanel.SetDock(tag, Dock.Left);
+        titleLine.Children.Add(tag);
+        titleLine.Children.Add(nameText);
+
+        var subText = new TextBlock {
+            Text = $"{OrDash(update.Version)}  ·  {OrDash(update.FileSize)}", FontSize = 11,
+            Margin = new Thickness(0, 3, 0, 0), TextTrimming = TextTrimming.CharacterEllipsis
+        };
+        subText.SetResourceReference(TextBlock.ForegroundProperty, "TextSecondaryBrush");
+
+        var contentPanel = new StackPanel { VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, 12, 0) };
+        contentPanel.Children.Add(titleLine);
+        contentPanel.Children.Add(subText);
+        Grid.SetColumn(contentPanel, 1);
+        row.Children.Add(contentPanel);
+
+        var dateText = new TextBlock {
+            Text = OrDash(update.ReleaseDate), FontSize = 11, VerticalAlignment = VerticalAlignment.Center,
+            TextTrimming = TextTrimming.CharacterEllipsis, Margin = new Thickness(0, 0, 10, 0)
+        };
+        dateText.SetResourceReference(TextBlock.ForegroundProperty, "TextSecondaryBrush");
+        Grid.SetColumn(dateText, 2);
+        row.Children.Add(dateText);
 
         var actionPanel = new StackPanel {
             Orientation = Orientation.Horizontal, VerticalAlignment = VerticalAlignment.Center,
             HorizontalAlignment = System.Windows.HorizontalAlignment.Right
         };
-        Grid.SetColumn(actionPanel, 6);
+        Grid.SetColumn(actionPanel, 3);
         row.Children.Add(actionPanel);
 
         var downloadButton = new Button { Content = "Download", Style = (Style)FindResource("OutlineAccentButton") };
         actionPanel.Children.Add(downloadButton);
 
+        var rowBorder = new Border {
+            BorderThickness = new Thickness(0, isFirst ? 0 : 1, 0, 0), Padding = new Thickness(8, 10, 8, 10),
+            CornerRadius = new CornerRadius(7), Background = System.Windows.Media.Brushes.Transparent,
+            Cursor = System.Windows.Input.Cursors.Hand, ToolTip = "Click for details", Child = row
+        };
+        rowBorder.SetResourceReference(Border.BorderBrushProperty, "BorderBrush2");
+
         var entry = new UpdateEntry {
-            Update = update, SelectCheckBox = selectCheckBox, DownloadButton = downloadButton, ActionPanel = actionPanel
+            Update = update, SelectCheckBox = selectCheckBox, DownloadButton = downloadButton,
+            ActionPanel = actionPanel, RowBorder = rowBorder, RowGrid = row, DateText = dateText
         };
         _updateEntries.Add(entry);
+        ApplyUpdateRowDensity(entry);
 
         selectCheckBox.Checked += (_, _) => UpdateBulkButtonsState();
         selectCheckBox.Unchecked += (_, _) => UpdateBulkButtonsState();
         downloadButton.Click += async (_, _) => await DownloadEntryAsync(entry);
+        rowBorder.MouseLeftButtonUp += (_, _) => ShowUpdateDetails(update);
 
-        SetCompactCellVisibility(row);
-
-        var rowBorder = new Border {
-            BorderThickness = new Thickness(0, isFirst ? 0 : 1, 0, 0), Padding = new Thickness(0, 10, 0, 10), Child = row
-        };
-        rowBorder.SetResourceReference(Border.BorderBrushProperty, "BorderBrush2");
         UpdatesListPanel.Children.Add(rowBorder);
+        if (update == _shownUpdate) HighlightUpdateRows();
         return entry;
     }
 
-    private static void AddTableCell(Grid row, int column, string text) {
-        var cell = new TextBlock {
-            Text = text, FontSize = 11, VerticalAlignment = VerticalAlignment.Center,
-            TextTrimming = TextTrimming.CharacterEllipsis, Margin = new Thickness(0, 0, 10, 0), ToolTip = text
-        };
-        cell.SetResourceReference(TextBlock.ForegroundProperty, "TextSecondaryBrush");
-        Grid.SetColumn(cell, column);
-        row.Children.Add(cell);
+    // The release date is the first thing to go when the list is squeezed — by a narrow window, or
+    // by the details pane, which shows the date anyway.
+    private bool _updatesCompact;
+
+    private void UpdatesListPanel_SizeChanged(object sender, SizeChangedEventArgs e) {
+        bool compact = e.NewSize.Width < 540;
+        if (compact == _updatesCompact) return;
+        _updatesCompact = compact;
+        foreach (UpdateEntry entry in _updateEntries) ApplyUpdateRowDensity(entry);
+    }
+
+    private void ApplyUpdateRowDensity(UpdateEntry entry) {
+        entry.RowGrid.ColumnDefinitions[2].Width = new GridLength(_updatesCompact ? 0 : 100);
+        entry.DateText.Visibility = _updatesCompact ? Visibility.Collapsed : Visibility.Visible;
+    }
+
+    // ----- Details pane -----
+
+    private void HighlightUpdateRows() {
+        foreach (UpdateEntry entry in _updateEntries) {
+            if (entry.Update == _shownUpdate) entry.RowBorder.SetResourceReference(Border.BackgroundProperty, "TrackBrush");
+            else entry.RowBorder.Background = System.Windows.Media.Brushes.Transparent;
+        }
+    }
+
+    private void ShowUpdateDetails(HpDriverUpdate update) {
+        _shownUpdate = update;
+        HighlightUpdateRows();
+
+        (string typeLabel, UpdateKind kind) = DescribeUpdateType(update.Category);
+        UpdateDetailsTitle.Text = update.Title;
+        UpdateDetailsSubtitle.Text = typeLabel.Equals(update.Category, StringComparison.OrdinalIgnoreCase)
+            ? typeLabel : $"{typeLabel}  ·  {update.Category}";
+        UpdateDetailsContent.Children.Clear();
+
+        if (kind == UpdateKind.Bios) {
+            AddDetailsNotice(kind, "Plug in the charger and leave it running. An interrupted BIOS update can leave the "
+                + "laptop unable to boot — this app refuses to start one below 50% battery or on battery power.");
+        } else if (kind == UpdateKind.Firmware) {
+            AddDetailsNotice(kind, "Firmware is written to the device itself. Keep the laptop powered while it installs.");
+        }
+
+        AddDetailFact("Offered version", OrDash(update.Version));
+        if (kind == UpdateKind.Bios && InstalledDriverInfo.GetBiosVersion() is string installedBios)
+            AddDetailFact("Installed now", installedBios);
+        AddDetailFact("Download size", OrDash(update.FileSize));
+        AddDetailFact("Released", OrDash(update.ReleaseDate));
+        AddDetailFact("Source", DescribeUpdateSource(update));
+        AddDetailFact("File", OrDash(update.FileName));
+
+        if (_downloadedPaths.TryGetValue(update, out string? savedPath)) {
+            AddDetailFact("Saved to", savedPath);
+
+            var openButton = new Button {
+                Content = "Open folder", Style = (Style)FindResource("SecondaryButton"),
+                Padding = new Thickness(12, 7, 12, 7), Margin = new Thickness(0, 12, 0, 0),
+                HorizontalAlignment = System.Windows.HorizontalAlignment.Stretch
+            };
+            openButton.Click += (_, _) =>
+                Process.Start(new ProcessStartInfo("explorer.exe", $"/select,\"{savedPath}\"") { UseShellExecute = true });
+            UpdateDetailsContent.Children.Add(openButton);
+        } else {
+            var downloadButton = new Button {
+                Content = "Download", Style = (Style)FindResource("PrimaryButton"),
+                Padding = new Thickness(12, 7, 12, 7), Margin = new Thickness(0, 12, 0, 0),
+                HorizontalAlignment = System.Windows.HorizontalAlignment.Stretch
+            };
+            downloadButton.Click += async (_, _) => {
+                UpdateEntry? entry = _updateEntries.FirstOrDefault(x => x.Update == update);
+                if (entry != null) await DownloadEntryAsync(entry);
+            };
+            UpdateDetailsContent.Children.Add(downloadButton);
+        }
+
+        UpdateDetailsPane.Visibility = Visibility.Visible;
+    }
+
+    private void CloseUpdateDetailsButton_Click(object sender, RoutedEventArgs e) => CloseUpdateDetails();
+
+    private void CloseUpdateDetails() {
+        _shownUpdate = null;
+        UpdateDetailsPane.Visibility = Visibility.Collapsed;
+        UpdateDetailsContent.Children.Clear();
+        HighlightUpdateRows();
+    }
+
+    // HP's own list, or the NVIDIA/Intel checks the app makes directly — worth showing before installing.
+    private static string DescribeUpdateSource(HpDriverUpdate update) {
+        try {
+            string host = new Uri(update.DownloadUrl).Host;
+            return host.Contains("nvidia", StringComparison.OrdinalIgnoreCase) ? $"NVIDIA ({host})"
+                : host.Contains("intel", StringComparison.OrdinalIgnoreCase) ? $"Intel ({host})"
+                : host.Contains("hp.com", StringComparison.OrdinalIgnoreCase) ? $"HP ({host})"
+                : host;
+        } catch {
+            return "—";
+        }
+    }
+
+    private void AddDetailsNotice(UpdateKind kind, string text) {
+        (Color background, Color foreground) = UpdateTagColors(kind);
+        UpdateDetailsContent.Children.Add(new Border {
+            Background = new SolidColorBrush(background), CornerRadius = new CornerRadius(7),
+            Padding = new Thickness(10, 8, 10, 8), Margin = new Thickness(0, 0, 0, 12),
+            Child = new TextBlock {
+                Text = text, FontSize = 11, TextWrapping = TextWrapping.Wrap, Foreground = new SolidColorBrush(foreground)
+            }
+        });
+    }
+
+    private void AddDetailFact(string label, string value) {
+        var labelText = new TextBlock { Text = label, FontSize = 10, FontWeight = FontWeights.SemiBold, Margin = new Thickness(0, 8, 0, 1) };
+        labelText.SetResourceReference(TextBlock.ForegroundProperty, "TextSecondaryBrush");
+
+        var valueText = new TextBlock { Text = value, FontSize = 12, TextWrapping = TextWrapping.Wrap, ToolTip = value };
+        valueText.SetResourceReference(TextBlock.ForegroundProperty, "TextPrimaryBrush");
+
+        UpdateDetailsContent.Children.Add(labelText);
+        UpdateDetailsContent.Children.Add(valueText);
     }
 
     private void SelectAllCheckBox_Changed(object sender, RoutedEventArgs e) {
@@ -1395,7 +1643,7 @@ public partial class MainWindow : Window {
         InstallSelectedButton.Content = selected > 0 ? $"Install selected ({selected})" : "Install selected";
         SelectionSummaryText.Text = selected > 0
             ? $"{selected} of {_updateEntries.Count} selected"
-            : "Tick updates to download or install several at once. Click a column to sort.";
+            : "Tick updates to download or install several at once. Click an update for details.";
 
         _updatingSelectAll = true;
         SelectAllCheckBox.IsChecked = selected > 0 && selected == _updateEntries.Count;
@@ -1421,6 +1669,7 @@ public partial class MainWindow : Window {
     }
 
     private void ShowDownloadedButtons(UpdateEntry entry) {
+        _downloadedPaths[entry.Update] = entry.DownloadedPath!;
         entry.ActionPanel.Children.Clear();
 
         var openButton = new Button {
@@ -1438,6 +1687,9 @@ public partial class MainWindow : Window {
 
         entry.ActionPanel.Children.Add(openButton);
         entry.ActionPanel.Children.Add(runButton);
+
+        // The details pane shows where the file landed, so redraw it if this is the update it's showing.
+        if (_shownUpdate == entry.Update) ShowUpdateDetails(entry.Update);
     }
 
     private async void DownloadSelectedButton_Click(object sender, RoutedEventArgs e) {
@@ -2154,7 +2406,7 @@ public partial class MainWindow : Window {
 
         body.Children.Add(BuildLabeledRow("Mode", null, BuildGameModeSelector(profile)));
         if (_refreshRates.Count > 1) body.Children.Add(BuildLabeledRow("Refresh rate", null, BuildGameRefreshRateSelector(profile)));
-        if (GameResolutions.Count > 1) body.Children.Add(BuildLabeledRow("Resolution", null, BuildGameResolutionSelector(profile)));
+        body.Children.Add(BuildLabeledRow("Resolution", "Empty = no change", BuildGameResolutionSelector(profile)));
         if (NvidiaFrameLimiter.IsAvailable && installed)
             body.Children.Add(BuildLabeledRow("FPS cap", "Empty = no cap", BuildGameFrameLimitSelector(profile)));
 
@@ -2202,21 +2454,95 @@ public partial class MainWindow : Window {
         if (bytes.HasValue) sourceText.Text = $"{source}  ·  {Maintenance.FormatBytes(bytes.Value)}";
     }
 
-    // Native-shaped resolutions for the panel, read once; the list only changes if the screen does.
-    private List<(int Width, int Height)>? _gameResolutionsCache;
-    private List<(int Width, int Height)> GameResolutions => _gameResolutionsCache ??= DisplayRefreshRate.GetGameResolutions();
-
+    // Any size the display reports, typed in, rather than a handful of presets: two number boxes and
+    // Apply, empty for no change. The resolution switches while the game runs and goes back after.
     private FrameworkElement BuildGameResolutionSelector(GameProfile profile) {
-        bool set = profile.ResolutionWidth > 0 && GameResolutions.Contains((profile.ResolutionWidth, profile.ResolutionHeight));
-        var options = new List<(string, string?, bool, Action)> {
-            ("Default", "Leave the resolution as it is", !set, () => SaveGameResolution(profile, 0, 0))
+        bool set = profile.ResolutionWidth > 0 && profile.ResolutionHeight > 0;
+        string tip = "Leave both empty to keep the desktop resolution while this game runs";
+
+        TextBox widthBox = BuildNumberBox(set ? profile.ResolutionWidth.ToString() : "", 52, tip);
+        TextBox heightBox = BuildNumberBox(set ? profile.ResolutionHeight.ToString() : "", 52, tip);
+
+        var times = new TextBlock {
+            Text = "×", FontSize = 12, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(6, 0, 6, 0)
         };
-        foreach ((int width, int height) in GameResolutions) {
-            options.Add(($"{height}p", $"{width} × {height} while this game runs — for games that use the desktop resolution",
-                set && width == profile.ResolutionWidth && height == profile.ResolutionHeight,
-                () => SaveGameResolution(profile, width, height)));
+        times.SetResourceReference(TextBlock.ForegroundProperty, "TextSecondaryBrush");
+
+        var apply = new Button {
+            Content = "Apply", Style = (Style)FindResource("SecondaryButton"),
+            Padding = new Thickness(12, 6, 12, 6), Margin = new Thickness(8, 0, 0, 0)
+        };
+        apply.Click += (_, _) => ApplyTypedResolution(profile, widthBox, heightBox);
+        foreach (TextBox box in new[] { widthBox, heightBox }) {
+            box.KeyDown += (_, e) => {
+                if (e.Key != Key.Enter) return;
+                e.Handled = true;
+                ApplyTypedResolution(profile, widthBox, heightBox);
+            };
         }
-        return BuildSegmentTrack(options);
+
+        var row = new StackPanel { Orientation = Orientation.Horizontal };
+        row.Children.Add(WrapInputBox(widthBox));
+        row.Children.Add(times);
+        row.Children.Add(WrapInputBox(heightBox));
+        row.Children.Add(apply);
+        return row;
+    }
+
+    private TextBox BuildNumberBox(string text, double width, string toolTip) {
+        var box = new TextBox {
+            Width = width, Text = text, MaxLength = 5,
+            BorderThickness = new Thickness(0), Background = System.Windows.Media.Brushes.Transparent,
+            FontSize = 12, TextAlignment = TextAlignment.Center, VerticalContentAlignment = VerticalAlignment.Center,
+            ToolTip = toolTip
+        };
+        box.SetResourceReference(System.Windows.Controls.Control.ForegroundProperty, "TextPrimaryBrush");
+        box.SetResourceReference(System.Windows.Controls.Primitives.TextBoxBase.CaretBrushProperty, "TextPrimaryBrush");
+        return box;
+    }
+
+    private Border WrapInputBox(TextBox box) {
+        var border = new Border {
+            CornerRadius = new CornerRadius(9), Padding = new Thickness(8, 5, 8, 5),
+            VerticalAlignment = VerticalAlignment.Center, Child = box
+        };
+        border.SetResourceReference(Border.BackgroundProperty, "TrackBrush");
+        return border;
+    }
+
+    private void ApplyTypedResolution(GameProfile profile, TextBox widthBox, TextBox heightBox) {
+        string typedWidth = widthBox.Text.Trim(), typedHeight = heightBox.Text.Trim();
+
+        if (typedWidth.Length == 0 && typedHeight.Length == 0) {
+            SaveGameResolution(profile, 0, 0);
+            return;
+        }
+
+        if (!int.TryParse(typedWidth, out int width) || !int.TryParse(typedHeight, out int height) || width <= 0 || height <= 0) {
+            MessageBox.Show(this, "Enter a width and a height, for example 1280 × 720 — or clear both boxes to leave the resolution alone.",
+                "HP Victus Control", MessageBoxButton.OK, MessageBoxImage.Warning);
+            RestoreResolutionBoxes(profile, widthBox, heightBox);
+            return;
+        }
+
+        // Windows only switches to modes the display reports, so a typed size that isn't one of them
+        // would silently do nothing when the game starts.
+        if (!DisplayRefreshRate.IsResolutionSupported(width, height)) {
+            string supported = string.Join("\n", DisplayRefreshRate.GetAllResolutions().Take(12).Select(m => $"• {m.Width} × {m.Height}"));
+            MessageBox.Show(this,
+                $"This display has no {width} × {height} mode, so Windows would refuse to switch to it.\n\nSizes it does have:\n{supported}",
+                "HP Victus Control", MessageBoxButton.OK, MessageBoxImage.Warning);
+            RestoreResolutionBoxes(profile, widthBox, heightBox);
+            return;
+        }
+
+        SaveGameResolution(profile, width, height);
+    }
+
+    private static void RestoreResolutionBoxes(GameProfile profile, TextBox widthBox, TextBox heightBox) {
+        bool set = profile.ResolutionWidth > 0 && profile.ResolutionHeight > 0;
+        widthBox.Text = set ? profile.ResolutionWidth.ToString() : "";
+        heightBox.Text = set ? profile.ResolutionHeight.ToString() : "";
     }
 
     private void SaveGameResolution(GameProfile profile, int width, int height) {
@@ -2326,20 +2652,10 @@ public partial class MainWindow : Window {
     private FrameworkElement BuildGameFrameLimitSelector(GameProfile profile) {
         _frameLimits.TryGetValue(profile.ExecutablePath, out int current);
 
-        var input = new TextBox {
-            Width = 46, Text = current > 0 ? current.ToString() : "", MaxLength = 4,
-            BorderThickness = new Thickness(0), Background = System.Windows.Media.Brushes.Transparent,
-            FontSize = 12, TextAlignment = TextAlignment.Center, VerticalContentAlignment = VerticalAlignment.Center,
-            ToolTip = $"{NvidiaFrameLimiter.MinFps}–{NvidiaFrameLimiter.MaxFps} fps, or empty for no cap"
-        };
-        input.SetResourceReference(System.Windows.Controls.Control.ForegroundProperty, "TextPrimaryBrush");
-        input.SetResourceReference(System.Windows.Controls.Primitives.TextBoxBase.CaretBrushProperty, "TextPrimaryBrush");
-
-        var inputBox = new Border {
-            CornerRadius = new CornerRadius(9), Padding = new Thickness(8, 5, 8, 5),
-            VerticalAlignment = VerticalAlignment.Center, Child = input
-        };
-        inputBox.SetResourceReference(Border.BackgroundProperty, "TrackBrush");
+        TextBox input = BuildNumberBox(current > 0 ? current.ToString() : "", 46,
+            $"{NvidiaFrameLimiter.MinFps}–{NvidiaFrameLimiter.MaxFps} fps, or empty for no cap");
+        input.MaxLength = 4;
+        Border inputBox = WrapInputBox(input);
 
         var apply = new Button {
             Content = "Apply", Style = (Style)FindResource("SecondaryButton"),

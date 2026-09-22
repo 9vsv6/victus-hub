@@ -67,6 +67,12 @@ public sealed class TrayService : IDisposable {
         return SystemIcons.Application;
     }
 
+    /// <summary>Re-adds the icon so Explorer re-reads its notification-area settings.</summary>
+    public void Refresh() {
+        _icon.Visible = false;
+        _icon.Visible = true;
+    }
+
     public void SetMaxFanChecked(bool value) => _maxFanItem.Checked = value;
 
     public void SetActiveMode(HpFanMode mode) {

@@ -34,6 +34,8 @@ public sealed class AppSettings {
     public double TempAlertThreshold { get; set; } = 85;
     public bool AutoFanByTemp { get; set; }
     public bool ExitOnClose { get; set; }
+    // Set once, the first time the tray icon is pulled out of Windows' hidden-icons overflow.
+    public bool TrayIconPromoted { get; set; }
     public int? SpeakerIdleSecondsBeforeKeepAwake { get; set; }
     public DateTime? LastUpdateCheckUtc { get; set; }
     public int PerformanceRefreshRateHz { get; set; }
