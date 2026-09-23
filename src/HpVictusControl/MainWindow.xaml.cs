@@ -45,11 +45,7 @@ public partial class MainWindow : Window {
         InitializeComponent();
         ApplyLanguage();
 
-        if (_settings.LastTab == "Drivers") DriversTabRadio.IsChecked = true;
-        else if (_settings.LastTab == "System") SystemTabRadio.IsChecked = true;
-        else if (_settings.LastTab == "Settings") SettingsTabRadio.IsChecked = true;
-        if (_settings.LastSection == "Games") GamesSectionRadio.IsChecked = true;
-
+        // Always opens on the Performance page (the XAML's default), not wherever it was last left.
         RestoreWindowBounds();
 
         ApplyTheme(_settings.DarkTheme);
@@ -68,10 +64,9 @@ public partial class MainWindow : Window {
         AlwaysOnTopCheckBox.IsChecked = _settings.AlwaysOnTop;
 
         SoundNav.Visibility = SpeakerPowerSettings.IsSupported ? Visibility.Visible : Visibility.Collapsed;
-        RadioButton settingsNav = FindName(_settings.SettingsSection) as RadioButton ?? AppearanceNav;
-        if (settingsNav.Visibility != Visibility.Visible) settingsNav = AppearanceNav;
-        settingsNav.IsChecked = true;
-        KeepSpeakersAwakeCheckBox.IsChecked = SpeakerPowerSettings.IsKeptAwake();        AppVersionText.Text = F("Version {0}", System.Reflection.Assembly.GetExecutingAssembly().GetName().Version);
+        AppearanceNav.IsChecked = true;
+        KeepSpeakersAwakeCheckBox.IsChecked = SpeakerPowerSettings.IsKeptAwake();
+        AppVersionText.Text = F("Version {0}", System.Reflection.Assembly.GetExecutingAssembly().GetName().Version);
 
         _tray.ShowRequested += () => Dispatcher.Invoke(() => {
             ShowInTaskbar = true;
@@ -367,12 +362,14 @@ public partial class MainWindow : Window {
         SettingsTabPanel.Visibility = SettingsTabRadio.IsChecked == true ? Visibility.Visible : Visibility.Collapsed;
 
         if (SystemTabRadio.IsChecked == true && !_initializing) LoadSystemTab();
+    }
 
-        if (_initializing) return;
-        _settings.LastTab = DriversTabRadio.IsChecked == true ? "Drivers"
-            : SystemTabRadio.IsChecked == true ? "System"
-            : SettingsTabRadio.IsChecked == true ? "Settings" : "Performance";
-        _settings.Save();
+    // Closing the window to the tray starts it over on the Performance page next time it opens,
+    // the same as a fresh launch.
+    private void ShowMainPage() {
+        PerformanceTabRadio.IsChecked = true;
+        PerformanceSectionRadio.IsChecked = true;
+        AppearanceNav.IsChecked = true;
     }
 
     private void PerformanceSection_Changed(object sender, RoutedEventArgs e) {
@@ -383,10 +380,6 @@ public partial class MainWindow : Window {
         bool games = GamesSectionRadio.IsChecked == true;
         PerformanceSectionPanel.Visibility = games ? Visibility.Collapsed : Visibility.Visible;
         GamesSectionPanel.Visibility = games ? Visibility.Visible : Visibility.Collapsed;
-
-        if (_initializing) return;
-        _settings.LastSection = games ? "Games" : "Performance";
-        _settings.Save();
     }
 
     // ----- Temperature dials -----
@@ -432,10 +425,6 @@ public partial class MainWindow : Window {
         };
         foreach ((RadioButton nav, FrameworkElement section) in sections)
             section.Visibility = ReferenceEquals(nav, sender) ? Visibility.Visible : Visibility.Collapsed;
-
-        if (_initializing) return;
-        _settings.SettingsSection = ((RadioButton)sender).Name;
-        _settings.Save();
     }
 
     private void UpdateSectionStatus() {
@@ -4231,6 +4220,7 @@ FlowDirection = FlowDirection.LeftToRight
 
         e.Cancel = true;
         Hide();
+        ShowMainPage();
 
         if (!_balloonShown) {
             _tray.ShowBalloon("Victus Hub", T("Still running in the background. Right-click the tray icon to exit."));

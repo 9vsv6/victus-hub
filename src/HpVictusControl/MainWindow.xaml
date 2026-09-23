@@ -1567,10 +1567,6 @@
 
             </Grid>
         </ScrollViewer>
-
-        <TextBlock Grid.Row="2" x:Name="FooterText" HorizontalAlignment="Center" Margin="0,14,0,0"
-                   Foreground="{DynamicResource TextSecondaryBrush}" FontSize="11"
-                   Text="Closing this window minimizes to the tray. Use the tray icon to exit."/>
         </Grid>
 
         <!-- What's new: once after the app updates, over the whole window (the negative margin
