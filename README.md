@@ -130,6 +130,11 @@ render drops to exactly 30.0 fps at a 30 fps cap.
 back which one is active. So the mode selector can't reflect the laptop's actual state if something
 else changed the mode.
 
+## License
+
+[MIT](LICENSE). The bundled Alexandria typeface used for the Arabic interface is under the SIL Open
+Font License ([src/HpVictusControl/Fonts/OFL.txt](src/HpVictusControl/Fonts/OFL.txt)).
+
 ## Disclaimer
 
 This app changes firmware-level hardware behavior through an undocumented interface, on a

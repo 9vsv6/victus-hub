@@ -59,7 +59,8 @@ Publisher: 9vsv6
 PublisherUrl: https://github.com/9vsv6
 PackageName: Victus Hub
 PackageUrl: https://github.com/$Repository
-License: Proprietary
+License: MIT
+LicenseUrl: https://github.com/$Repository/blob/main/LICENSE
 ShortDescription: Fan, performance, GPU power and driver control for HP Victus and Omen laptops.
 Description: |-
   A small replacement for the fan and performance parts of Omen Gaming Hub. It talks to the HP BIOS
