@@ -132,8 +132,23 @@ else changed the mode.
 
 ## License
 
-[MIT](LICENSE). The bundled Alexandria typeface used for the Arabic interface is under the SIL Open
-Font License ([src/HpVictusControl/Fonts/OFL.txt](src/HpVictusControl/Fonts/OFL.txt)).
+```
+Copyright 2026 9vsv6
+
+Licensed under the MIT License (the "License"). You may use, copy, modify,
+merge, publish, distribute, sublicense and/or sell copies of this software,
+provided the copyright notice and the License are included with it.
+You may obtain a copy of the License in the LICENSE file or at
+
+    https://opensource.org/licenses/MIT
+
+The software is provided "AS IS", WITHOUT WARRANTY OF ANY KIND, express or
+implied. See the License for the specific language governing permissions
+and limitations under the License.
+```
+
+The bundled Alexandria typeface used for the Arabic interface is under the SIL Open Font License
+([src/HpVictusControl/Fonts/OFL.txt](src/HpVictusControl/Fonts/OFL.txt)).
 
 ## Disclaimer
 
