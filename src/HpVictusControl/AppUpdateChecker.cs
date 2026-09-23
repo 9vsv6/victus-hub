@@ -12,7 +12,7 @@ public readonly record struct AppUpdateResult(
 /// <summary>Checks this project's own GitHub Releases for a newer build than the one running.</summary>
 public static class AppUpdateChecker {
 
-    private const string ReleasesApiUrl = "https://api.github.com/repos/9vsv6/hp-victus-control/releases/latest";
+    private const string ReleasesApiUrl = "https://api.github.com/repos/9vsv6/victus-hub/releases/latest";
 
     public static async Task<AppUpdateResult> CheckAsync(Version currentVersion) {
         try {

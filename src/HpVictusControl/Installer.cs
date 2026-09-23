@@ -155,7 +155,7 @@ public static class Installer {
         key.SetValue("InstallLocation", Path.GetDirectoryName(exe)!);
         key.SetValue("UninstallString", $"\"{exe}\" {UninstallArgument}");
         key.SetValue("InstallDate", DateTime.Now.ToString("yyyyMMdd"));
-        key.SetValue("URLInfoAbout", "https://github.com/9vsv6/hp-victus-control");
+        key.SetValue("URLInfoAbout", "https://github.com/9vsv6/victus-hub");
         key.SetValue("NoModify", 1, RegistryValueKind.DWord);
         key.SetValue("NoRepair", 1, RegistryValueKind.DWord);
         key.SetValue("EstimatedSize", (int)(new FileInfo(exe).Length / 1024), RegistryValueKind.DWord);
