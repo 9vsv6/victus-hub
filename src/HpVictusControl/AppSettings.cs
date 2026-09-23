@@ -39,6 +39,13 @@ public sealed class AppSettings {
     public double TempAlertThreshold { get; set; } = 85;
     public bool AutoFanByTemp { get; set; }
     public bool ExitOnClose { get; set; }
+    // GPU power as last chosen in the app; null = never changed here, so the BIOS's own setting stands.
+    public bool? GpuCustomTgp { get; set; }
+    public bool? GpuDynamicBoost { get; set; }
+    public bool IdleCoolEnabled { get; set; }
+    public int IdleCoolMinutes { get; set; } = 5;
+    // 0 = leave the keyboard backlight on however long the laptop sits idle.
+    public int KeyboardBacklightTimeoutSeconds { get; set; }
     // Set once, the first time the tray icon is pulled out of Windows' hidden-icons overflow.
     public bool TrayIconPromoted { get; set; }
     public int? SpeakerIdleSecondsBeforeKeepAwake { get; set; }

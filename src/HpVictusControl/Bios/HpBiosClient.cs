@@ -21,6 +21,12 @@ public enum HpGpuMode : byte {
     Optimus = 0x02,
 }
 
+/// <summary>
+/// What the BIOS reports for the GPU's power settings. The two switches are independent: this
+/// laptop ships with Dynamic Boost on and the raised limit off, a mix none of HP's presets name.
+/// </summary>
+public readonly record struct HpGpuPower(bool CustomTgp, bool DynamicBoost, byte DState, byte PeakTemperature);
+
 public sealed class HpBiosException : Exception {
     public HpBiosException(string message) : base(message) { }
     public HpBiosException(string message, Exception inner) : base(message, inner) { }
@@ -215,6 +221,50 @@ public sealed class HpBiosClient : IDisposable {
     /// <summary>Stores a new graphics mode; the BIOS applies it on the next restart.</summary>
     public void SetGpuMode(HpGpuMode mode) {
         int rc = Send(CmdWrite, 0x52, new byte[] { (byte)mode, 0x00, 0x00, 0x00 }, 0, out _);
+        Check(rc);
+    }
+
+    // ----- GPU power --------------------------------------------------------------------------
+
+    /// <summary>
+    /// The NVIDIA GPU's power settings: a raised power limit (custom TGP) and Dynamic Boost (PPAB),
+    /// which lets the GPU borrow power the CPU isn't using.
+    /// </summary>
+    public HpGpuPower GetGpuPower() {
+        int rc = Send(0x21, new byte[4], 4, out byte[] outData);
+        Check(rc);
+        return new HpGpuPower(outData[0] != 0, outData[1] != 0, outData[2], outData[3]);
+    }
+
+    public void SetGpuPower(bool customTgp, bool dynamicBoost) {
+        // D-state 1 and no temperature override: the same values HP's own software sends.
+        int rc = Send(0x22, new byte[] { (byte)(customTgp ? 1 : 0), (byte)(dynamicBoost ? 1 : 0), 0x01, 0x00 }, 0, out _);
+        Check(rc);
+    }
+
+    // ----- Keyboard backlight -------------------------------------------------------------------
+
+    private const uint CmdKeyboard = 0x20009;
+    private const byte BacklightOn = 0xE4, BacklightOff = 0x64;
+
+    /// <summary>Whether the keyboard has a backlight the BIOS can switch. Never throws.</summary>
+    public bool HasKeyboardBacklight() {
+        try {
+            return Send(CmdKeyboard, 0x01, new byte[4], 4, out byte[] outData) == 0
+                && outData.Length > 0 && (outData[0] & 0x01) != 0;
+        } catch (HpBiosException) {
+            return false;
+        }
+    }
+
+    public bool GetKeyboardBacklight() {
+        int rc = Send(CmdKeyboard, 0x04, new byte[4], 4, out byte[] outData);
+        Check(rc);
+        return outData[0] == BacklightOn;
+    }
+
+    public void SetKeyboardBacklight(bool on) {
+        int rc = Send(CmdKeyboard, 0x05, new byte[] { on ? BacklightOn : BacklightOff, 0x00, 0x00, 0x00 }, 0, out _);
         Check(rc);
     }
 

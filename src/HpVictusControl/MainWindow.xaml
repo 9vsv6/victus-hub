@@ -828,6 +828,59 @@
                                                    Foreground="{DynamicResource TextSecondaryBrush}" Margin="0,12,0,0" TextWrapping="Wrap"/>
                                     </StackPanel>
                                 </Border>
+
+                                <!-- NVIDIA power limit and Dynamic Boost, where the BIOS offers them -->
+                                <Border x:Name="GpuPowerCard" Style="{StaticResource Card}" Visibility="Collapsed">
+                                    <StackPanel>
+                                        <TextBlock Text="GPU power" Style="{StaticResource SectionHeader}"/>
+                                        <CheckBox x:Name="GpuTgpCheckBox" Content="Higher power limit" Style="{StaticResource GlowToggle}"
+                                                  Checked="GpuPowerCheckBox_Changed" Unchecked="GpuPowerCheckBox_Changed"/>
+                                        <TextBlock Text="Lets the NVIDIA GPU draw more power (custom TGP): more fps, more heat" FontSize="11"
+                                                   TextWrapping="Wrap" Foreground="{DynamicResource TextSecondaryBrush}" Margin="26,3,0,0"/>
+                                        <CheckBox x:Name="GpuBoostCheckBox" Content="Dynamic Boost" Style="{StaticResource GlowToggle}" Margin="0,14,0,0"
+                                                  Checked="GpuPowerCheckBox_Changed" Unchecked="GpuPowerCheckBox_Changed"/>
+                                        <TextBlock Text="Moves power from the CPU to the GPU when the CPU doesn't need it" FontSize="11"
+                                                   TextWrapping="Wrap" Foreground="{DynamicResource TextSecondaryBrush}" Margin="26,3,0,0"/>
+                                        <TextBlock x:Name="GpuPowerStatusText" FontSize="11" TextWrapping="Wrap" Margin="0,12,0,0"
+                                                   Foreground="{DynamicResource TextSecondaryBrush}" Visibility="Collapsed"/>
+                                    </StackPanel>
+                                </Border>
+
+                                <!-- What happens while nobody is at the keyboard -->
+                                <Border x:Name="IdleCard" Style="{StaticResource Card}">
+                                    <StackPanel>
+                                        <TextBlock Text="When you step away" Style="{StaticResource SectionHeader}"/>
+                                        <CheckBox x:Name="IdleCoolCheckBox" Content="Cool mode when idle" Style="{StaticResource GlowToggle}"
+                                                  Checked="IdleCoolCheckBox_Changed" Unchecked="IdleCoolCheckBox_Changed"/>
+                                        <TextBlock Text="Quiets the fans after no mouse or keyboard input, and switches back as soon as you return. Not while a game from your list is running."
+                                                   FontSize="11" TextWrapping="Wrap" Foreground="{DynamicResource TextSecondaryBrush}" Margin="26,3,0,8"/>
+                                        <Border Background="{DynamicResource TrackBrush}" CornerRadius="9" MaxWidth="360" HorizontalAlignment="Left"
+                                                Margin="26,0,0,0" IsEnabled="{Binding ElementName=IdleCoolCheckBox, Path=IsChecked}">
+                                            <UniformGrid x:Name="IdleCoolMinutesPanel" Rows="1">
+                                                <RadioButton Content="2 min" Tag="2" GroupName="IdleCoolMinutes" Style="{StaticResource SegmentRadio}" Checked="IdleCoolMinutes_Checked"/>
+                                                <RadioButton Content="5 min" Tag="5" GroupName="IdleCoolMinutes" Style="{StaticResource SegmentRadio}" Checked="IdleCoolMinutes_Checked"/>
+                                                <RadioButton Content="10 min" Tag="10" GroupName="IdleCoolMinutes" Style="{StaticResource SegmentRadio}" Checked="IdleCoolMinutes_Checked"/>
+                                                <RadioButton Content="20 min" Tag="20" GroupName="IdleCoolMinutes" Style="{StaticResource SegmentRadio}" Checked="IdleCoolMinutes_Checked"/>
+                                            </UniformGrid>
+                                        </Border>
+
+                                        <StackPanel x:Name="KeyboardBacklightPanel" Visibility="Collapsed">
+                                            <Border Height="1" Background="{DynamicResource BorderBrush2}" Margin="0,14,0,14"/>
+                                            <CheckBox x:Name="KeyboardBacklightCheckBox" Content="Keyboard backlight" Style="{StaticResource GlowToggle}"
+                                                      Checked="KeyboardBacklightCheckBox_Changed" Unchecked="KeyboardBacklightCheckBox_Changed"/>
+                                            <TextBlock Text="Turn it off after no input for" FontSize="11" TextWrapping="Wrap"
+                                                       Foreground="{DynamicResource TextSecondaryBrush}" Margin="26,3,0,8"/>
+                                            <Border Background="{DynamicResource TrackBrush}" CornerRadius="9" MaxWidth="360" HorizontalAlignment="Left" Margin="26,0,0,0">
+                                                <UniformGrid x:Name="BacklightTimeoutPanel" Rows="1">
+                                                    <RadioButton Content="Never" Tag="0" GroupName="BacklightTimeout" Style="{StaticResource SegmentRadio}" Checked="BacklightTimeout_Checked"/>
+                                                    <RadioButton Content="30 s" Tag="30" GroupName="BacklightTimeout" Style="{StaticResource SegmentRadio}" Checked="BacklightTimeout_Checked"/>
+                                                    <RadioButton Content="1 min" Tag="60" GroupName="BacklightTimeout" Style="{StaticResource SegmentRadio}" Checked="BacklightTimeout_Checked"/>
+                                                    <RadioButton Content="5 min" Tag="300" GroupName="BacklightTimeout" Style="{StaticResource SegmentRadio}" Checked="BacklightTimeout_Checked"/>
+                                                </UniformGrid>
+                                            </Border>
+                                        </StackPanel>
+                                    </StackPanel>
+                                </Border>
                             </StackPanel>
                         </Grid>
                     </StackPanel>
@@ -953,16 +1006,21 @@
                                     <RowDefinition Height="*"/>
                                 </Grid.RowDefinitions>
 
-                                <Grid x:Name="BulkActionsBar" Margin="0,0,0,8">
+                                <!-- The actions drop to a second row when the details pane leaves too little width -->
+                                <Grid x:Name="BulkActionsBar" Margin="0,0,0,8" SizeChanged="BulkActionsBar_SizeChanged">
                                     <Grid.ColumnDefinitions>
                                         <ColumnDefinition Width="*"/>
                                         <ColumnDefinition Width="Auto"/>
                                         <ColumnDefinition Width="Auto"/>
                                         <ColumnDefinition Width="Auto"/>
                                     </Grid.ColumnDefinitions>
+                                    <Grid.RowDefinitions>
+                                        <RowDefinition Height="Auto"/>
+                                        <RowDefinition Height="Auto"/>
+                                    </Grid.RowDefinitions>
 
                                     <!-- Search takes whatever room is left, so the sort button is never cut off -->
-                                    <Grid VerticalAlignment="Center">
+                                    <Grid x:Name="SearchSortGrid" VerticalAlignment="Center">
                                         <Grid.ColumnDefinitions>
                                             <ColumnDefinition Width="*" MinWidth="80" MaxWidth="240"/>
                                             <ColumnDefinition Width="Auto"/>

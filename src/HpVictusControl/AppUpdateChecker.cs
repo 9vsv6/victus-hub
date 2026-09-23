@@ -67,7 +67,33 @@ public static class AppUpdateChecker {
             File.Delete(destination);
             throw new IOException(Loc.F("The download stopped early ({0:N0} of {1:N0} bytes).", written.Length, update.AssetSize));
         }
+
+        // Releases from 1.6.0 on carry "<exe>.sha256" beside the exe; older ones don't, so a missing
+        // checksum isn't an error, but one that doesn't match is.
+        string? expected = await TryDownloadChecksumAsync(client, update.AssetUrl + ".sha256");
+        if (expected != null) {
+            string actual;
+            await using (FileStream file = File.OpenRead(destination)) {
+                actual = Convert.ToHexString(await System.Security.Cryptography.SHA256.HashDataAsync(file));
+            }
+            if (!string.Equals(actual, expected, StringComparison.OrdinalIgnoreCase)) {
+                File.Delete(destination);
+                throw new IOException(Loc.T("The download doesn't match the release's checksum, so it wasn't used."));
+            }
+        }
         return destination;
+    }
+
+    private static async Task<string?> TryDownloadChecksumAsync(HttpClient client, string url) {
+        try {
+            using HttpResponseMessage response = await client.GetAsync(url);
+            if (!response.IsSuccessStatusCode) return null;
+            // "HASH  HpVictusControl.exe", the sha256sum format.
+            string hash = (await response.Content.ReadAsStringAsync()).Trim().Split(' ', 2)[0];
+            return hash.Length == 64 ? hash : null;
+        } catch (HttpRequestException) {
+            return null;
+        }
     }
 
     private static HttpClient CreateClient(Version currentVersion) {

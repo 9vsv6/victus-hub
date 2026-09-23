@@ -1,4 +1,4 @@
-namespace HpVictusControl;
+﻿namespace HpVictusControl;
 
 public static partial class Loc {
 
@@ -520,5 +520,33 @@ public static partial class Loc {
         ["Open HP Victus Control"] = "فتح HP Victus Control",
         ["Max fan speed"] = "أقصى سرعة للمروحة",
         ["Performance mode"] = "وضع الأداء",
+
+        // ----- GPU power and idle -----
+        ["GPU power"] = "طاقة GPU",
+        ["Higher power limit"] = "حد طاقة أعلى",
+        ["Lets the NVIDIA GPU draw more power (custom TGP): more fps, more heat"] = "يسمح لكرت NVIDIA بسحب طاقة أكبر (custom TGP): إطارات أكثر وحرارة أعلى",
+        ["Dynamic Boost"] = "Dynamic Boost",
+        ["Moves power from the CPU to the GPU when the CPU doesn't need it"] = "ينقل الطاقة من المعالج إلى كرت الشاشة عندما لا يحتاجها المعالج",
+        ["Applied."] = "تم التطبيق.",
+        ["The BIOS didn't take that change."] = "لم يقبل الـ BIOS هذا التغيير.",
+        ["When you step away"] = "عند الابتعاد عن الجهاز",
+        ["Cool mode when idle"] = "وضع التبريد عند الخمول",
+        ["Quiets the fans after no mouse or keyboard input, and switches back as soon as you return. Not while a game from your list is running."] =
+            "يهدّئ المراوح عند عدم استخدام الفأرة أو لوحة المفاتيح، ويعود فور رجوعك. لا يعمل أثناء تشغيل لعبة من قائمتك.",
+        ["2 min"] = "2 دقيقة",
+        ["5 min"] = "5 دقائق",
+        ["10 min"] = "10 دقائق",
+        ["20 min"] = "20 دقيقة",
+        ["1 min"] = "دقيقة",
+        ["30 s"] = "30 ثانية",
+        ["Never"] = "أبدًا",
+        ["Keyboard backlight"] = "إضاءة لوحة المفاتيح",
+        ["Turn it off after no input for"] = "إطفاؤها بعد عدم الاستخدام لمدة",
+        ["{0}, Cool while idle"] = "{0}، تبريد أثناء الخمول",
+        ["The download doesn't match the release's checksum, so it wasn't used."] = "الملف المحمّل لا يطابق checksum الإصدار، لذلك لم يُستخدم.",
+        ["GPU power: a higher power limit and Dynamic Boost for the NVIDIA GPU"] = "طاقة GPU: حد طاقة أعلى وDynamic Boost لكرت NVIDIA",
+        ["Cool mode when idle: the fans quiet down while you're away and come back when you return"] = "وضع التبريد عند الخمول: تهدأ المراوح أثناء غيابك وتعود عند رجوعك",
+        ["Keyboard backlight switch, and it can turn itself off when the laptop sits idle"] = "مفتاح لإضاءة لوحة المفاتيح، ويمكنها أن تنطفئ تلقائيًا عند خمول الجهاز",
+        ["Fixed: the Drivers toolbar was cut off when an update's details were open"] = "إصلاح: كان شريط أدوات التعريفات يُقتطع عند فتح تفاصيل تحديث",
     };
 }

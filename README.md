@@ -29,6 +29,12 @@ tray icon that polls the BIOS every 2 seconds.
 - Live temperature and fan speed readout (tray tooltip and main window)
 - Manual fan speed per fan (best-effort, see the note below)
 - Force max fan speed
+- GPU power: a higher power limit (custom TGP) and Dynamic Boost for the NVIDIA GPU, where the BIOS
+  offers them
+- Cool mode when idle: the fans quiet down after a few minutes without input and come back the
+  moment you do. It leaves the selected mode, power plan and brightness alone and never kicks in
+  during a game from your list
+- Keyboard backlight switch, with an optional timeout that turns it off while the laptop sits idle
 - Performance mode switch: Balanced / Performance / Cool, with the battery time each mode would
   give from the current charge. The times are learned from how much power each mode actually draws
   on battery
@@ -52,7 +58,8 @@ tray icon that polls the BIOS every 2 seconds.
   endurance), BIOS graphics switch (where the model has one), fan test, shader cache cleanup
 - BIOS settings without rebooting into setup: battery care, fans always on, action keys, boot menu
   delay, plus Restart into BIOS
-- Checks its own GitHub releases once a day and can download and install a newer build in place
+- Checks its own GitHub releases once a day and can download and install a newer build in place,
+  checking it against the release's SHA256 checksum first
 - Installs itself: it offers to copy into Program Files with a Start menu shortcut and an entry in
   Windows' installed apps. Uninstalling from there puts the fans and power plan back to defaults
 - Logs crashes to `%APPDATA%\HP Victus Control\crash.log` and says so on the next launch
@@ -80,6 +87,14 @@ dotnet run --project "src\HpVictusControl\HpVictusControl.csproj"
 Or open `HpVictusControl.sln` in Visual Studio and hit Run. The app relaunches itself as
 administrator, so Windows shows a UAC prompt. To debug, run Visual Studio as administrator so the
 app doesn't hand off to a separate process.
+
+## Releases
+
+Pushing a `v*` tag builds the release on GitHub Actions. Each release has three files: the exe, its
+SHA256 checksum, and `winget-manifests.zip`. That zip is ready to submit to
+[microsoft/winget-pkgs](https://github.com/microsoft/winget-pkgs), which needs the repository to be
+public. The exe is signed when the repository has two secrets: `SIGNING_CERT_PFX` (the base64 of a
+code-signing `.pfx`) and `SIGNING_CERT_PASSWORD`. Without them the release is built unsigned.
 
 ## How it works
 

@@ -1,4 +1,4 @@
-using System.Diagnostics;
+﻿using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using System.Runtime.InteropServices;
@@ -419,7 +419,8 @@ public partial class MainWindow : Window {
     // The strip beside the section tabs, so temperatures and the active mode stay in view
     // while you're on the Games list.
     private void UpdateSectionStatus() {
-        SectionStatusText.Text = $"CPU {TemperatureText.Text}  ·  GPU {GpuTempText.Text}  ·  {Mode(_currentMode)}";
+        string mode = _idleCoolActive ? F("{0}, Cool while idle", Mode(_currentMode)) : Mode(_currentMode);
+        SectionStatusText.Text = $"CPU {TemperatureText.Text}  ·  GPU {GpuTempText.Text}  ·  {mode}";
     }
 
     // ----- Match Windows' theme -----
@@ -792,6 +793,8 @@ public partial class MainWindow : Window {
         }
 
         PopulateRefreshRateOptions();
+        LoadGpuPower();
+        LoadIdleSettings();
         RenderGameProfilesList();
         ScanForGamesIfNoneSaved();
         RestoreLastUpdateScan();
@@ -870,6 +873,7 @@ public partial class MainWindow : Window {
         }
 
         CheckGameProfiles();
+        CheckIdle();
         KeepWindowsPowerPlanInSync();
     }
 
@@ -1264,6 +1268,205 @@ KeepLeftToRight(value);
         bool onAc = System.Windows.Forms.SystemInformation.PowerStatus.PowerLineStatus
             == System.Windows.Forms.PowerLineStatus.Online;
         SetActiveModeRadio(onAc ? HpFanMode.Performance : HpFanMode.Cool);
+    }
+
+    // ----- GPU power ------------------------------------------------------------------------
+
+    private bool _syncingGpuPower;
+
+    // Shown only where the BIOS answers the GPU power query and there's an NVIDIA GPU for it to affect.
+    private void LoadGpuPower() {
+        HpGpuPower power;
+        try {
+            power = _bios.GetGpuPower();
+        } catch (HpBiosException) {
+            GpuPowerCard.Visibility = Visibility.Collapsed;
+            return;
+        }
+        if (!NvidiaGpuSensor.IsAvailable) {
+            GpuPowerCard.Visibility = Visibility.Collapsed;
+            return;
+        }
+        GpuPowerCard.Visibility = Visibility.Visible;
+
+        // A choice made in this app is put back at each start, in case the BIOS or HP's own
+        // software reset it in the meantime. Never chosen here: the BIOS's setting stands.
+        bool tgp = _settings.GpuCustomTgp ?? power.CustomTgp;
+        bool boost = _settings.GpuDynamicBoost ?? power.DynamicBoost;
+        if (tgp != power.CustomTgp || boost != power.DynamicBoost) {
+            try {
+                _bios.SetGpuPower(tgp, boost);
+            } catch (HpBiosException) {
+                tgp = power.CustomTgp;
+                boost = power.DynamicBoost;
+            }
+        }
+        ShowGpuPower(tgp, boost);
+    }
+
+    private void ShowGpuPower(bool customTgp, bool dynamicBoost) {
+        _syncingGpuPower = true;
+        GpuTgpCheckBox.IsChecked = customTgp;
+        GpuBoostCheckBox.IsChecked = dynamicBoost;
+        _syncingGpuPower = false;
+    }
+
+    private void GpuPowerCheckBox_Changed(object sender, RoutedEventArgs e) {
+        if (_initializing || _syncingGpuPower) return;
+
+        bool tgp = GpuTgpCheckBox.IsChecked == true, boost = GpuBoostCheckBox.IsChecked == true;
+        GpuPowerStatusText.Visibility = Visibility.Visible;
+        try {
+            _bios.SetGpuPower(tgp, boost);
+            // Read back rather than trusted: the switch should show what the BIOS actually holds.
+            HpGpuPower now = _bios.GetGpuPower();
+            ShowGpuPower(now.CustomTgp, now.DynamicBoost);
+            _settings.GpuCustomTgp = now.CustomTgp;
+            _settings.GpuDynamicBoost = now.DynamicBoost;
+            _settings.Save();
+            GpuPowerStatusText.Text = now.CustomTgp == tgp && now.DynamicBoost == boost
+                ? T("Applied.")
+                : T("The BIOS didn't take that change.");
+        } catch (HpBiosException ex) {
+            GpuPowerStatusText.Text = ex.Message;
+            try {
+                HpGpuPower now = _bios.GetGpuPower();
+                ShowGpuPower(now.CustomTgp, now.DynamicBoost);
+            } catch (HpBiosException) {
+                // Leave the switches as they are.
+            }
+        }
+    }
+
+    // ----- Idle: Cool mode and keyboard backlight --------------------------------------------
+
+    // Idle cooling only changes the BIOS's fan mode: the selected mode, its power plan, refresh
+    // rate and brightness all stay, so a video left playing doesn't suddenly dim.
+    private bool _idleCoolActive;
+    private bool _backlightOffForIdle;
+    private bool _syncingBacklight;
+    // Runs only while something is switched off for idle, so the way back is quick even when the
+    // stats poll has slowed to 15 seconds in the tray.
+    private readonly DispatcherTimer _idleWakeTimer = new() { Interval = TimeSpan.FromMilliseconds(250) };
+
+    private void LoadIdleSettings() {
+        _idleWakeTimer.Tick += IdleWakeTimer_Tick;
+
+        IdleCoolCheckBox.IsChecked = _settings.IdleCoolEnabled;
+        foreach (RadioButton radio in IdleCoolMinutesPanel.Children.OfType<RadioButton>())
+            radio.IsChecked = int.Parse((string)radio.Tag) == _settings.IdleCoolMinutes;
+
+        if (!_bios.HasKeyboardBacklight()) return;
+        KeyboardBacklightPanel.Visibility = Visibility.Visible;
+        SyncBacklightCheckBox();
+        foreach (RadioButton radio in BacklightTimeoutPanel.Children.OfType<RadioButton>())
+            radio.IsChecked = int.Parse((string)radio.Tag) == _settings.KeyboardBacklightTimeoutSeconds;
+    }
+
+    private void IdleCoolCheckBox_Changed(object sender, RoutedEventArgs e) {
+        if (_initializing) return;
+        _settings.IdleCoolEnabled = IdleCoolCheckBox.IsChecked == true;
+        _settings.Save();
+        if (!_settings.IdleCoolEnabled && _idleCoolActive) EndIdleCooling();
+    }
+
+    private void IdleCoolMinutes_Checked(object sender, RoutedEventArgs e) {
+        if (_initializing) return;
+        _settings.IdleCoolMinutes = int.Parse((string)((RadioButton)sender).Tag);
+        _settings.Save();
+    }
+
+    private void KeyboardBacklightCheckBox_Changed(object sender, RoutedEventArgs e) {
+        if (_initializing || _syncingBacklight) return;
+        _backlightOffForIdle = false;
+        try {
+            _bios.SetKeyboardBacklight(KeyboardBacklightCheckBox.IsChecked == true);
+        } catch (HpBiosException ex) {
+            Message(this, ex.Message, "HP Victus Control", MessageBoxButton.OK, MessageBoxImage.Warning);
+            SyncBacklightCheckBox();
+        }
+    }
+
+    private void BacklightTimeout_Checked(object sender, RoutedEventArgs e) {
+        if (_initializing) return;
+        _settings.KeyboardBacklightTimeoutSeconds = int.Parse((string)((RadioButton)sender).Tag);
+        _settings.Save();
+    }
+
+    // Fn+F4 switches the backlight without the app knowing, so the switch is re-read while it's on screen.
+    private void SyncBacklightCheckBox() {
+        if (_backlightOffForIdle) return;
+        try {
+            bool on = _bios.GetKeyboardBacklight();
+            _syncingBacklight = true;
+            KeyboardBacklightCheckBox.IsChecked = on;
+            _syncingBacklight = false;
+        } catch (HpBiosException) {
+            // Try again next tick.
+        }
+    }
+
+    private void CheckIdle() {
+        TimeSpan idle = IdleTime.Current;
+
+        if (_idleCoolActive && _activeGameProfileExeName != null) {
+            // A game started (played on a controller, which Windows doesn't count as input): it owns the mode now.
+            EndIdleCooling();
+        } else if (!_idleCoolActive && _settings.IdleCoolEnabled && _currentMode != HpFanMode.Cool
+                   && _activeGameProfileExeName == null && idle >= TimeSpan.FromMinutes(_settings.IdleCoolMinutes)) {
+            try {
+                _bios.SetFanMode(HpFanMode.Cool);
+                _idleCoolActive = true;
+                _idleWakeTimer.Start();
+                UpdateSectionStatus();
+            } catch (HpBiosException) {
+                // Try again next tick.
+            }
+        }
+
+        if (KeyboardBacklightPanel.Visibility != Visibility.Visible || _backlightOffForIdle) return;
+        int timeout = _settings.KeyboardBacklightTimeoutSeconds;
+        if (timeout <= 0 || idle < TimeSpan.FromSeconds(timeout)) {
+            if (IsVisible) SyncBacklightCheckBox();
+            return;
+        }
+        try {
+            // Already off (by hand or Fn+F4): nothing to bring back later.
+            if (!_bios.GetKeyboardBacklight()) return;
+            _bios.SetKeyboardBacklight(false);
+            _backlightOffForIdle = true;
+            _idleWakeTimer.Start();
+        } catch (HpBiosException) {
+            // Try again next tick.
+        }
+    }
+
+    private void IdleWakeTimer_Tick(object? sender, EventArgs e) {
+        if (IdleTime.Current >= TimeSpan.FromSeconds(1)) return;
+        if (_idleCoolActive) EndIdleCooling();
+        if (_backlightOffForIdle) EndBacklightTimeout();
+    }
+
+    private void EndIdleCooling() {
+        _idleCoolActive = false;
+        if (!_backlightOffForIdle) _idleWakeTimer.Stop();
+        try {
+            _bios.SetFanMode(_currentMode);
+        } catch (HpBiosException) {
+            // The next mode change sets it anyway.
+        }
+        UpdateSectionStatus();
+    }
+
+    private void EndBacklightTimeout() {
+        _backlightOffForIdle = false;
+        if (!_idleCoolActive) _idleWakeTimer.Stop();
+        try {
+            _bios.SetKeyboardBacklight(true);
+        } catch (HpBiosException) {
+            // Fn+F4 still works.
+        }
+        SyncBacklightCheckBox();
     }
 
     // ----- Manual fan speed --------------------------------------------------------------
@@ -2064,6 +2267,28 @@ KeepLeftToRight(subText);
     // The release date is the first thing to go when the list is squeezed — by a narrow window, or
     // by the details pane, which shows the date anyway.
     private bool _updatesCompact;
+
+    // Search, sort, select all and the two bulk buttons don't fit one row once the details pane
+    // opens at a normal window size; the last three then move to a row of their own.
+    private void BulkActionsBar_SizeChanged(object sender, SizeChangedEventArgs e) {
+        var unbounded = new Size(double.PositiveInfinity, double.PositiveInfinity);
+        UpdateSortButton.Measure(unbounded);
+        double needed = 160 + UpdateSortButton.DesiredSize.Width;
+        foreach (FrameworkElement action in new FrameworkElement[] { SelectAllCheckBox, DownloadSelectedButton, InstallSelectedButton }) {
+            action.Measure(unbounded);
+            needed += action.DesiredSize.Width;
+        }
+
+        bool wrap = BulkActionsBar.ActualWidth < needed;
+        if (wrap == (Grid.GetRow(InstallSelectedButton) == 1)) return;
+
+        Grid.SetColumnSpan(SearchSortGrid, wrap ? 4 : 1);
+        foreach (FrameworkElement action in new FrameworkElement[] { SelectAllCheckBox, DownloadSelectedButton, InstallSelectedButton }) {
+            Grid.SetRow(action, wrap ? 1 : 0);
+            Thickness margin = action.Margin;
+            action.Margin = new Thickness(margin.Left, wrap ? 8 : 0, margin.Right, 0);
+        }
+    }
 
     private void UpdatesListPanel_SizeChanged(object sender, SizeChangedEventArgs e) {
         bool compact = e.NewSize.Width < 540;
@@ -3989,6 +4214,9 @@ FlowDirection = FlowDirection.LeftToRight
         if (_activeGameMaxFan && !_preGameMaxFan) {
             try { _bios.SetMaxFanSpeed(false); } catch (HpBiosException) { }
         }
+        // The same for anything switched off or down while the laptop sat idle.
+        if (_idleCoolActive) EndIdleCooling();
+        if (_backlightOffForIdle) EndBacklightTimeout();
 
         _tray.Dispose();
         _bios.Dispose();

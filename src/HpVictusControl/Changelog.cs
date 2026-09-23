@@ -10,6 +10,12 @@ public static class Changelog {
 
     // Newest first.
     public static readonly Release[] Releases = {
+        new(new Version(1, 6, 0), new[] {
+            "GPU power: a higher power limit and Dynamic Boost for the NVIDIA GPU",
+            "Cool mode when idle: the fans quiet down while you're away and come back when you return",
+            "Keyboard backlight switch, and it can turn itself off when the laptop sits idle",
+            "Fixed: the Drivers toolbar was cut off when an update's details were open",
+        }),
         new(new Version(1, 5, 0), new[] {
             "Linen light and dark themes, easier on the eyes over long sessions",
             "Arabic interface with a right-to-left layout (Settings → Language)",
