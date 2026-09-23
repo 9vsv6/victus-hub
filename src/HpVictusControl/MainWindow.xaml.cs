@@ -67,7 +67,10 @@ public partial class MainWindow : Window {
         ExitOnCloseCheckBox.IsChecked = _settings.ExitOnClose;
         AlwaysOnTopCheckBox.IsChecked = _settings.AlwaysOnTop;
 
-        SpeakerAwakeCard.Visibility = SpeakerPowerSettings.IsSupported ? Visibility.Visible : Visibility.Collapsed;
+        SoundNav.Visibility = SpeakerPowerSettings.IsSupported ? Visibility.Visible : Visibility.Collapsed;
+        RadioButton settingsNav = FindName(_settings.SettingsSection) as RadioButton ?? AppearanceNav;
+        if (settingsNav.Visibility != Visibility.Visible) settingsNav = AppearanceNav;
+        settingsNav.IsChecked = true;
         KeepSpeakersAwakeCheckBox.IsChecked = SpeakerPowerSettings.IsKeptAwake();        AppVersionText.Text = F("Version {0}", System.Reflection.Assembly.GetExecutingAssembly().GetName().Version);
 
         _tray.ShowRequested += () => Dispatcher.Invoke(() => {
@@ -195,7 +198,7 @@ public partial class MainWindow : Window {
         // The checkbox's own handler talks to the BIOS and keeps the tray menu in step.
         bool enable = MaxFanCheckBox.IsChecked != true;
         MaxFanCheckBox.IsChecked = enable;
-        _tray.ShowBalloon("HP Victus Control", enable ? T("Max fan on") : T("Max fan off"));
+        _tray.ShowBalloon("Victus Hub", enable ? T("Max fan on") : T("Max fan off"));
     }
 
     private void RefreshHotkeyDisplay() {
@@ -318,7 +321,7 @@ public partial class MainWindow : Window {
             _ => HpFanMode.Balanced
         };
         SetActiveModeRadio(next);
-        _tray.ShowBalloon("HP Victus Control", F("Switched to {0} mode", Mode(next)));
+        _tray.ShowBalloon("Victus Hub", F("Switched to {0} mode", Mode(next)));
     }
 
     private void RestoreWindowBounds() {
@@ -418,6 +421,23 @@ public partial class MainWindow : Window {
 
     // The strip beside the section tabs, so temperatures and the active mode stay in view
     // while you're on the Games list.
+    // ----- Settings sections -----
+
+    // One section at a time beside the list; the last one opened is where Settings reopens.
+    private void SettingsNav_Checked(object sender, RoutedEventArgs e) {
+        var sections = new (RadioButton Nav, FrameworkElement Section)[] {
+            (AppearanceNav, AppearanceSection), (LanguageNav, LanguageSection), (SoundNav, SpeakerAwakeCard),
+            (StartupNav, StartupSection), (TempAlertsNav, TempAlertsSection),
+            (ShortcutsNav, ShortcutsSection), (AboutNav, AboutSection),
+        };
+        foreach ((RadioButton nav, FrameworkElement section) in sections)
+            section.Visibility = ReferenceEquals(nav, sender) ? Visibility.Visible : Visibility.Collapsed;
+
+        if (_initializing) return;
+        _settings.SettingsSection = ((RadioButton)sender).Name;
+        _settings.Save();
+    }
+
     private void UpdateSectionStatus() {
         string mode = _idleCoolActive ? F("{0}, Cool while idle", Mode(_currentMode)) : Mode(_currentMode);
         SectionStatusText.Text = $"CPU {TemperatureText.Text}  ·  GPU {GpuTempText.Text}  ·  {mode}";
@@ -478,7 +498,7 @@ public partial class MainWindow : Window {
             try {
                 StartupManager.SetEnabled(enabled);
             } catch (Exception ex) {
-                Message(this, F("Couldn't update startup setting: {0}", ex.Message), "HP Victus Control", MessageBoxButton.OK, MessageBoxImage.Warning);
+                Message(this, F("Couldn't update startup setting: {0}", ex.Message), "Victus Hub", MessageBoxButton.OK, MessageBoxImage.Warning);
                 StartWithWindowsCheckBox.IsChecked = !enabled;
                 return;
             }
@@ -509,7 +529,7 @@ public partial class MainWindow : Window {
             SpeakerAwakeStatusText.Text = T("Restart Windows to apply this.");
             SpeakerAwakeStatusText.Visibility = Visibility.Visible;
         } catch (Exception ex) {
-            Message(this, F("Couldn't change the speaker setting: {0}", ex.Message), "HP Victus Control",
+            Message(this, F("Couldn't change the speaker setting: {0}", ex.Message), "Victus Hub",
                 MessageBoxButton.OK, MessageBoxImage.Warning);
             _revertingSpeakerToggle = true;
             KeepSpeakersAwakeCheckBox.IsChecked = !keepAwake;
@@ -561,7 +581,7 @@ public partial class MainWindow : Window {
         double threshold = _settings.TempAlertThreshold;
         if (!alertActive && celsius.Value >= threshold) {
             alertActive = true;
-            _tray.ShowWarningBalloon("HP Victus Control", F("{0} temperature is high: {1:0.#}°C", label, celsius.Value));
+            _tray.ShowWarningBalloon("Victus Hub", F("{0} temperature is high: {1:0.#}°C", label, celsius.Value));
         } else if (alertActive && celsius.Value <= threshold - 5) {
             alertActive = false;
         }
@@ -615,9 +635,9 @@ public partial class MainWindow : Window {
         // takes a restart. The question is asked in the language being switched to.
         bool toArabic = code == ArabicCode;
         MessageBoxResult restart = MessageBox.Show(this,
-            toArabic ? "هل تريد إعادة تشغيل HP Victus Control الآن لعرض الواجهة بالعربية؟"
-                     : "Restart HP Victus Control now to switch to English?",
-            "HP Victus Control", MessageBoxButton.YesNo, MessageBoxImage.Question, MessageBoxResult.Yes,
+            toArabic ? "هل تريد إعادة تشغيل Victus Hub الآن لعرض الواجهة بالعربية؟"
+                     : "Restart Victus Hub now to switch to English?",
+            "Victus Hub", MessageBoxButton.YesNo, MessageBoxImage.Question, MessageBoxResult.Yes,
             toArabic ? System.Windows.MessageBoxOptions.RtlReading | System.Windows.MessageBoxOptions.RightAlign
                      : System.Windows.MessageBoxOptions.None);
         if (restart != MessageBoxResult.Yes) return;
@@ -816,6 +836,8 @@ public partial class MainWindow : Window {
         if (_settings.AutoPowerSwitch) AutoPowerCheckBox.IsChecked = true;
         if (_settings.StartWithWindows) StartWithWindowsCheckBox.IsChecked = true;
         if (_settings.AutoFanByTemp) AutoFanCheckBox.IsChecked = true;
+        // After Start with Windows has refreshed the Program Files copy.
+        Installer.SyncListing();
     }
 
     private void RefreshStats() {
@@ -867,7 +889,7 @@ public partial class MainWindow : Window {
             CpuFanText.Text = F("~{0} RPM", cpu * 100);
             GpuFanText.Text = F("~{0} RPM", gpu * 100);
 
-            _tray.SetTooltip(F("HP Victus  |  CPU {0}  CPU fan {1} GPU fan {2} RPM", tempText, cpu * 100, gpu * 100));
+            _tray.SetTooltip(F("Victus Hub  |  CPU {0}  CPU fan {1} GPU fan {2} RPM", tempText, cpu * 100, gpu * 100));
         } catch (HpBiosException) {
             // Skip this tick; the BIOS occasionally returns a transient error under load.
         }
@@ -897,7 +919,7 @@ public partial class MainWindow : Window {
         if (!corrected || firstCheck || DateTime.UtcNow - _lastPowerPlanNotice < TimeSpan.FromMinutes(5)) return;
 
         _lastPowerPlanNotice = DateTime.UtcNow;
-        _tray.ShowBalloon("HP Victus Control", F("Windows' power plan had changed — put it back to {0} mode", Mode(_currentMode)));
+        _tray.ShowBalloon("Victus Hub", F("Windows' power plan had changed — put it back to {0} mode", Mode(_currentMode)));
     }
 
     private void RefreshBatteryStatus() {
@@ -1106,7 +1128,7 @@ KeepLeftToRight(value);
             WindowsPowerPlan.SetForMode(mode);
             ApplyBrightnessForMode(mode, previousMode);
         } catch (HpBiosException ex) {
-            Message(this, ex.Message, "HP Victus Control", MessageBoxButton.OK, MessageBoxImage.Warning);
+            Message(this, ex.Message, "Victus Hub", MessageBoxButton.OK, MessageBoxImage.Warning);
         }
     }
 
@@ -1382,7 +1404,7 @@ KeepLeftToRight(value);
         try {
             _bios.SetKeyboardBacklight(KeyboardBacklightCheckBox.IsChecked == true);
         } catch (HpBiosException ex) {
-            Message(this, ex.Message, "HP Victus Control", MessageBoxButton.OK, MessageBoxImage.Warning);
+            Message(this, ex.Message, "Victus Hub", MessageBoxButton.OK, MessageBoxImage.Warning);
             SyncBacklightCheckBox();
         }
     }
@@ -1483,7 +1505,7 @@ KeepLeftToRight(value);
             try {
                 _bios.ReleaseManualFanControl();
             } catch (HpBiosException ex) {
-                Message(this, ex.Message, "HP Victus Control", MessageBoxButton.OK, MessageBoxImage.Warning);
+                Message(this, ex.Message, "Victus Hub", MessageBoxButton.OK, MessageBoxImage.Warning);
             }
         }
     }
@@ -1497,7 +1519,7 @@ KeepLeftToRight(value);
         try {
             _bios.SetFanLevels((byte)CpuFanSlider.Value, (byte)GpuFanSlider.Value);
         } catch (HpBiosException ex) {
-            Message(this, ex.Message, "HP Victus Control", MessageBoxButton.OK, MessageBoxImage.Warning);
+            Message(this, ex.Message, "Victus Hub", MessageBoxButton.OK, MessageBoxImage.Warning);
         }
     }
 
@@ -1511,7 +1533,7 @@ KeepLeftToRight(value);
             _bios.SetMaxFanSpeed(enabled);
             _tray.SetMaxFanChecked(enabled);
         } catch (HpBiosException ex) {
-            Message(this, ex.Message, "HP Victus Control", MessageBoxButton.OK, MessageBoxImage.Warning);
+            Message(this, ex.Message, "Victus Hub", MessageBoxButton.OK, MessageBoxImage.Warning);
         }
     }
 
@@ -1729,7 +1751,7 @@ KeepLeftToRight(value);
     private void AnnounceNewUpdates(List<HpDriverUpdate> fresh) {
         if (fresh.Count == 0) return;
         string names = string.Join(T(", "), fresh.Take(3).Select(update => update.Title)) + (fresh.Count > 3 ? "…" : "");
-        _tray.ShowBalloon("HP Victus Control", fresh.Count == 1
+        _tray.ShowBalloon("Victus Hub", fresh.Count == 1
             ? F("New driver update: {0}", names)
             : F("{0} new driver updates: {1}", fresh.Count, names));
     }
@@ -1762,16 +1784,16 @@ KeepLeftToRight(value);
         Version? installed = Installer.InstalledVersion;
         string question;
         if (Installer.IsRegistered && installed != null && !Installer.IsRunningInstalled && installed < current) {
-            question = F("Update the installed HP Victus Control from {0} to {1}?", installed.ToString(3), current.ToString(3));
+            question = F("Update the installed Victus Hub from {0} to {1}?", installed.ToString(3), current.ToString(3));
         } else if (!Installer.IsRegistered && !_settings.InstallOffered) {
             _settings.InstallOffered = true;
             _settings.Save();
-            question = T("Install HP Victus Control on this PC?\n\nIt's copied to Program Files, gets a Start menu shortcut and appears in Windows' installed apps, so it can be removed cleanly. You can also do this later in Settings → About.");
+            question = T("Install Victus Hub on this PC?\n\nIt's copied to Program Files, gets a Start menu shortcut and appears in Windows' installed apps, so it can be removed cleanly. You can also do this later in Settings → About.");
         } else {
             return;
         }
 
-        if (Message(this, question, "HP Victus Control", MessageBoxButton.YesNo, MessageBoxImage.Question) == MessageBoxResult.Yes)
+        if (Message(this, question, "Victus Hub", MessageBoxButton.YesNo, MessageBoxImage.Question) == MessageBoxResult.Yes)
             InstallHere();
     }
 
@@ -1787,7 +1809,7 @@ KeepLeftToRight(value);
             string exe = File.Exists(Installer.InstalledExe) ? Installer.InstalledExe : Environment.ProcessPath!;
             Process.Start(new ProcessStartInfo(exe, Installer.UninstallArgument) { UseShellExecute = false });
         } catch (Exception ex) {
-            Message(this, F("Couldn't start the uninstall: {0}", ex.Message), "HP Victus Control", MessageBoxButton.OK, MessageBoxImage.Warning);
+            Message(this, F("Couldn't start the uninstall: {0}", ex.Message), "Victus Hub", MessageBoxButton.OK, MessageBoxImage.Warning);
         }
     }
 
@@ -1798,16 +1820,16 @@ KeepLeftToRight(value);
             RefreshInstallStatus();
 
             if (!relaunch) {
-                Message(this, T("Installed. HP Victus Control is in the Start menu and Windows' installed apps."),
-                    "HP Victus Control", MessageBoxButton.OK, MessageBoxImage.Information);
+                Message(this, T("Installed. Victus Hub is in the Start menu and Windows' installed apps."),
+                    "Victus Hub", MessageBoxButton.OK, MessageBoxImage.Information);
                 return;
             }
-            Message(this, T("Installed. HP Victus Control will now restart from Program Files."),
-                "HP Victus Control", MessageBoxButton.OK, MessageBoxImage.Information);
+            Message(this, T("Installed. Victus Hub will now restart from Program Files."),
+                "Victus Hub", MessageBoxButton.OK, MessageBoxImage.Information);
             Installer.LaunchAfterExit(exe);
             ExitApplication();
         } catch (Exception ex) {
-            Message(this, F("Couldn't install: {0}", ex.Message), "HP Victus Control", MessageBoxButton.OK, MessageBoxImage.Warning);
+            Message(this, F("Couldn't install: {0}", ex.Message), "Victus Hub", MessageBoxButton.OK, MessageBoxImage.Warning);
         }
     }
 
@@ -1892,14 +1914,35 @@ KeepLeftToRight(value);
 
         WhatsNewTitleText.Text = F("What's new in {0}", current.ToString(3));
         WhatsNewList.Children.Clear();
-        foreach (string change in releases.SelectMany(release => release.Changes)) {
-            var line = new TextBlock {
-                Text = "•  " + T(change), FontSize = 12, TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 2, 0, 2)
-            };
-            line.SetResourceReference(TextBlock.ForegroundProperty, "TextPrimaryBrush");
-            WhatsNewList.Children.Add(line);
-        }
+        foreach (Changelog.Change change in releases.SelectMany(release => release.Changes))
+            WhatsNewList.Children.Add(BuildWhatsNewRow(change));
         WhatsNewCard.Visibility = Visibility.Visible;
+    }
+
+    // An icon tile, then the title with a line of detail under it.
+    private static UIElement BuildWhatsNewRow(Changelog.Change change) {
+        var glyph = new TextBlock {
+            Text = Changelog.Glyph(change.Kind), FontSize = 17,
+            FontFamily = new System.Windows.Media.FontFamily("Segoe Fluent Icons, Segoe MDL2 Assets"),
+            HorizontalAlignment = System.Windows.HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center
+        };
+        glyph.SetResourceReference(TextBlock.ForegroundProperty, "AccentBrush");
+        var tile = new Border { Width = 36, Height = 36, CornerRadius = new CornerRadius(9), Child = glyph, VerticalAlignment = VerticalAlignment.Top };
+        tile.SetResourceReference(Border.BackgroundProperty, "GlowFillBrush");
+
+        var title = new TextBlock { Text = T(change.Title), FontSize = 13.5, FontWeight = FontWeights.SemiBold, TextWrapping = TextWrapping.Wrap };
+        title.SetResourceReference(TextBlock.ForegroundProperty, "TextPrimaryBrush");
+        var detail = new TextBlock { Text = T(change.Detail), FontSize = 12, TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 2, 0, 0) };
+        detail.SetResourceReference(TextBlock.ForegroundProperty, "TextSecondaryBrush");
+        var text = new StackPanel { Margin = new Thickness(12, 0, 0, 0), VerticalAlignment = VerticalAlignment.Center };
+        text.Children.Add(title);
+        text.Children.Add(detail);
+
+        var row = new DockPanel { Margin = new Thickness(0, 0, 0, 12) };
+        DockPanel.SetDock(tile, Dock.Left);
+        row.Children.Add(tile);
+        row.Children.Add(text);
+        return row;
     }
 
     private void WhatsNewDismiss_Click(object sender, RoutedEventArgs e) {
@@ -2441,7 +2484,7 @@ KeepLeftToRight(valueText);
         } catch (Exception ex) {
             entry.DownloadButton.Content = T("Retry");
             entry.DownloadButton.IsEnabled = true;
-            Message(this, F("Download failed: {0}", ex.Message), "HP Victus Control", MessageBoxButton.OK, MessageBoxImage.Warning);
+            Message(this, F("Download failed: {0}", ex.Message), "Victus Hub", MessageBoxButton.OK, MessageBoxImage.Warning);
         } finally {
             entry.IsBusy = false;
         }
@@ -2493,7 +2536,7 @@ KeepLeftToRight(valueText);
 
         bool anyBios = selected.Any(x => IsBiosUpdate(x.Update));
         if (anyBios && BiosUpdatePowerProblem() is string problem) {
-            Message(this, F("{0}\n\nNothing was installed.", problem), "HP Victus Control", MessageBoxButton.OK, MessageBoxImage.Warning);
+            Message(this, F("{0}\n\nNothing was installed.", problem), "Victus Hub", MessageBoxButton.OK, MessageBoxImage.Warning);
             return;
         }
         string names = string.Join("\n", selected.Select(x => "• " + x.Update.Title));
@@ -2504,7 +2547,7 @@ KeepLeftToRight(valueText);
 
         MessageBoxResult confirmed = Message(this,
             F("Install {0} update(s)?\n\n{1}{2}", selected.Count, names, warning),
-            "HP Victus Control", MessageBoxButton.YesNo, anyBios ? MessageBoxImage.Warning : MessageBoxImage.Question);
+            "Victus Hub", MessageBoxButton.YesNo, anyBios ? MessageBoxImage.Warning : MessageBoxImage.Question);
         if (confirmed != MessageBoxResult.Yes) return;
 
         DownloadSelectedButton.IsEnabled = false;
@@ -2521,7 +2564,7 @@ KeepLeftToRight(valueText);
             // Checked again right before it runs: the charger may have come out during earlier installers.
             if (IsBiosUpdate(entry.Update) && BiosUpdatePowerProblem() is string lateProblem) {
                 failed++;
-                Message(this, F("Skipped {0}: {1}", entry.Update.Title, lateProblem), "HP Victus Control", MessageBoxButton.OK, MessageBoxImage.Warning);
+                Message(this, F("Skipped {0}: {1}", entry.Update.Title, lateProblem), "Victus Hub", MessageBoxButton.OK, MessageBoxImage.Warning);
                 continue;
             }
 
@@ -2551,7 +2594,7 @@ KeepLeftToRight(valueText);
             await process.WaitForExitAsync();
             return process.ExitCode;
         } catch (Exception ex) {
-            Message(this, F("Couldn't run {0}: {1}", Path.GetFileName(filePath), ex.Message), "HP Victus Control", MessageBoxButton.OK, MessageBoxImage.Warning);
+            Message(this, F("Couldn't run {0}: {1}", Path.GetFileName(filePath), ex.Message), "Victus Hub", MessageBoxButton.OK, MessageBoxImage.Warning);
             return null;
         }
     }
@@ -2579,7 +2622,7 @@ KeepLeftToRight(valueText);
     private async Task RunInstallerAsync(HpDriverUpdate update, string filePath, Button runButton) {
         bool isBios = IsBiosUpdate(update);
         if (isBios && BiosUpdatePowerProblem() is string problem) {
-            Message(this, problem, "HP Victus Control", MessageBoxButton.OK, MessageBoxImage.Warning);
+            Message(this, problem, "Victus Hub", MessageBoxButton.OK, MessageBoxImage.Warning);
             return;
         }
         string warning = isBios
@@ -2590,7 +2633,7 @@ KeepLeftToRight(valueText);
 
         MessageBoxResult result = Message(this,
             F("Run \"{0}\" now?\n\n{1}", update.FileName, warning),
-            "HP Victus Control", MessageBoxButton.YesNo, isBios ? MessageBoxImage.Warning : MessageBoxImage.Question);
+            "Victus Hub", MessageBoxButton.YesNo, isBios ? MessageBoxImage.Warning : MessageBoxImage.Question);
         if (result != MessageBoxResult.Yes) return;
 
         runButton.IsEnabled = false;
@@ -2609,7 +2652,7 @@ KeepLeftToRight(valueText);
                 Message(this,
                     F("{0} exited with code {1}. It may not have fully installed — " +
                     "check the extracted files under C:\\SWSetup for its log, or try running it again.", update.FileName, exitCode.Value),
-                    "HP Victus Control", MessageBoxButton.OK, MessageBoxImage.Warning);
+                    "Victus Hub", MessageBoxButton.OK, MessageBoxImage.Warning);
             }
         }
     }
@@ -2740,7 +2783,7 @@ KeepLeftToRight(valueText);
         string shownValue = value switch { "Enable" => T("On"), "Disable" => T("Off"), _ => F("{0} s", value) };
         MessageBoxResult confirmed = Message(this,
             F("Change \"{0}\" to {1} in the BIOS?\n\nIt's saved to the BIOS straight away and takes effect after the next restart.", T(label), shownValue),
-            "HP Victus Control", MessageBoxButton.YesNo, MessageBoxImage.Question);
+            "Victus Hub", MessageBoxButton.YesNo, MessageBoxImage.Question);
 
         if (confirmed == MessageBoxResult.Yes) {
             try {
@@ -2752,9 +2795,9 @@ KeepLeftToRight(valueText);
                     BiosRestartToApplyButton.Visibility = Visibility.Visible;
                     return;
                 }
-                Message(this, HpBiosSettings.DescribeResult(result), "HP Victus Control", MessageBoxButton.OK, MessageBoxImage.Warning);
+                Message(this, HpBiosSettings.DescribeResult(result), "Victus Hub", MessageBoxButton.OK, MessageBoxImage.Warning);
             } catch (Exception ex) {
-                Message(this, F("Couldn't change the BIOS setting: {0}", ex.Message), "HP Victus Control", MessageBoxButton.OK, MessageBoxImage.Warning);
+                Message(this, F("Couldn't change the BIOS setting: {0}", ex.Message), "Victus Hub", MessageBoxButton.OK, MessageBoxImage.Warning);
             }
         }
 
@@ -2765,13 +2808,13 @@ KeepLeftToRight(valueText);
     private void RestartIntoBiosButton_Click(object sender, RoutedEventArgs e) {
         MessageBoxResult confirmed = Message(this,
             T("Restart straight into the BIOS setup screen now? Save anything you have open first."),
-            "HP Victus Control", MessageBoxButton.YesNo, MessageBoxImage.Warning);
+            "Victus Hub", MessageBoxButton.YesNo, MessageBoxImage.Warning);
         if (confirmed != MessageBoxResult.Yes) return;
 
         try {
             HpBiosSettings.RestartIntoBios();
         } catch (Exception ex) {
-            Message(this, F("Couldn't restart: {0}", ex.Message), "HP Victus Control", MessageBoxButton.OK, MessageBoxImage.Warning);
+            Message(this, F("Couldn't restart: {0}", ex.Message), "Victus Hub", MessageBoxButton.OK, MessageBoxImage.Warning);
         }
     }
 
@@ -3003,7 +3046,7 @@ KeepLeftToRight(temperature);
         MessageBoxResult confirmed = Message(this,
             F("Switch graphics mode to {0}?\n\nThe BIOS applies this the next time the laptop restarts.", name) +
             (wanted == HpGpuMode.Discrete ? T("\n\nNVIDIA only drains the battery noticeably faster.") : ""),
-            "HP Victus Control", MessageBoxButton.YesNo, MessageBoxImage.Question);
+            "Victus Hub", MessageBoxButton.YesNo, MessageBoxImage.Question);
         if (confirmed != MessageBoxResult.Yes) {
             SyncGpuModeRadios(_currentGpuMode.Value);
             return;
@@ -3017,20 +3060,20 @@ KeepLeftToRight(temperature);
             RestartNowButton.Visibility = Visibility.Visible;
         } catch (HpBiosException ex) {
             SyncGpuModeRadios(_currentGpuMode.Value);
-            Message(this, F("The BIOS didn't accept the change: {0}", ex.Message), "HP Victus Control", MessageBoxButton.OK, MessageBoxImage.Warning);
+            Message(this, F("The BIOS didn't accept the change: {0}", ex.Message), "Victus Hub", MessageBoxButton.OK, MessageBoxImage.Warning);
         }
     }
 
     private void RestartNowButton_Click(object sender, RoutedEventArgs e) {
         MessageBoxResult confirmed = Message(this,
             T("Restart the laptop now? Save anything you have open first."),
-            "HP Victus Control", MessageBoxButton.YesNo, MessageBoxImage.Warning);
+            "Victus Hub", MessageBoxButton.YesNo, MessageBoxImage.Warning);
         if (confirmed != MessageBoxResult.Yes) return;
 
         try {
             Process.Start(new ProcessStartInfo("shutdown.exe", "/r /t 0") { UseShellExecute = false, CreateNoWindow = true });
         } catch (Exception ex) {
-            Message(this, F("Couldn't restart: {0}", ex.Message), "HP Victus Control", MessageBoxButton.OK, MessageBoxImage.Warning);
+            Message(this, F("Couldn't restart: {0}", ex.Message), "Victus Hub", MessageBoxButton.OK, MessageBoxImage.Warning);
         }
     }
 
@@ -3055,20 +3098,20 @@ KeepLeftToRight(temperature);
         ShaderCacheSizeText.Text = T("Clearing…");
         (FolderUsage freed, int skipped) = await Task.Run(Maintenance.ClearShaderCaches);
         RefreshMaintenanceSizes();
-        _tray.ShowBalloon("HP Victus Control", F("Shader cache cleared — freed {0}", freed) +
+        _tray.ShowBalloon("Victus Hub", F("Shader cache cleared — freed {0}", freed) +
             (skipped > 0 ? F(" ({0} file(s) in use by a running game were left)", skipped) : ""));
     }
 
     private async void CleanDriverDownloadsButton_Click(object sender, RoutedEventArgs e) {
         MessageBoxResult confirmed = Message(this,
             T("Delete every downloaded driver and BIOS installer? You can download them again from the Drivers tab."),
-            "HP Victus Control", MessageBoxButton.YesNo, MessageBoxImage.Question);
+            "Victus Hub", MessageBoxButton.YesNo, MessageBoxImage.Question);
         if (confirmed != MessageBoxResult.Yes) return;
 
         CleanDriverDownloadsButton.IsEnabled = false;
         (FolderUsage freed, int skipped) = await Task.Run(() => Maintenance.CleanDriverDownloads());
         RefreshMaintenanceSizes();
-        _tray.ShowBalloon("HP Victus Control", F("Freed {0}", freed) + (skipped > 0 ? F("; {0} installer(s) still in use were left", skipped) : ""));
+        _tray.ShowBalloon("Victus Hub", F("Freed {0}", freed) + (skipped > 0 ? F("; {0} installer(s) still in use were left", skipped) : ""));
     }
 
     private void AutoCleanDownloadsCheckBox_Changed(object sender, RoutedEventArgs e) {
@@ -3228,7 +3271,7 @@ KeepLeftToRight(temperature);
         _settings.Save();
         RenderGameProfilesList();
         UpdateSectionStatus();
-        _tray.ShowBalloon("HP Victus Control",
+        _tray.ShowBalloon("Victus Hub",
             added.Count == 1 ? F("Added {0} to Games", added[0]) : F("Added {0} games: {1}", added.Count, string.Join(", ", added)));
     }
 
@@ -3314,7 +3357,7 @@ KeepLeftToRight(temperature);
             _gameBoost.Stop();
             _wifiTuning.Stop();
             _activeGameProfileExeName = null;
-            _tray.ShowBalloon("HP Victus Control", F("{0} closed — restored {1} mode", endedGame, Mode(_preGameMode)));
+            _tray.ShowBalloon("Victus Hub", F("{0} closed — restored {1} mode", endedGame, Mode(_preGameMode)));
         }
 
         foreach (TrackedGame game in tracked) {
@@ -3348,7 +3391,7 @@ KeepLeftToRight(temperature);
             if (game.Boost) changes.Add(T("game boost"));
             if (wifiTuned) changes.Add(T("Wi-Fi tuning"));
             if (changes.Count > 0)
-                _tray.ShowBalloon("HP Victus Control", F("{0} detected — switched to {1}", game.Name, string.Join(T(", "), changes)));
+                _tray.ShowBalloon("Victus Hub", F("{0} detected — switched to {1}", game.Name, string.Join(T(", "), changes)));
             break;
         }
     }
@@ -3627,7 +3670,7 @@ KeepLeftToRight(temperature);
 
         if (!int.TryParse(typedWidth, out int width) || !int.TryParse(typedHeight, out int height) || width <= 0 || height <= 0) {
             Message(this, T("Enter a width and a height, for example 1280 × 720 — or clear both boxes to leave the resolution alone."),
-                "HP Victus Control", MessageBoxButton.OK, MessageBoxImage.Warning);
+                "Victus Hub", MessageBoxButton.OK, MessageBoxImage.Warning);
             RestoreResolutionBoxes(profile, widthBox, heightBox);
             return;
         }
@@ -3638,7 +3681,7 @@ KeepLeftToRight(temperature);
             string supported = string.Join("\n", DisplayRefreshRate.GetAllResolutions().Take(12).Select(m => $"• {m.Width} × {m.Height}"));
             Message(this,
                 F("This display has no {0} × {1} mode, so Windows would refuse to switch to it.\n\nSizes it does have:\n{2}", width, height, supported),
-                "HP Victus Control", MessageBoxButton.OK, MessageBoxImage.Warning);
+                "Victus Hub", MessageBoxButton.OK, MessageBoxImage.Warning);
             RestoreResolutionBoxes(profile, widthBox, heightBox);
             return;
         }
@@ -3788,7 +3831,7 @@ KeepLeftToRight(temperature);
         if (typed.Length > 0 && (!int.TryParse(typed, out fps) || fps < NvidiaFrameLimiter.MinFps || fps > NvidiaFrameLimiter.MaxFps)) {
             Message(this,
                 F("Enter a frame rate between {0} and {1}, or leave the box empty for no cap.", NvidiaFrameLimiter.MinFps, NvidiaFrameLimiter.MaxFps),
-                "HP Victus Control", MessageBoxButton.OK, MessageBoxImage.Warning);
+                "Victus Hub", MessageBoxButton.OK, MessageBoxImage.Warning);
             _frameLimits.TryGetValue(profile.ExecutablePath, out int previous);
             input.Text = previous > 0 ? previous.ToString() : "";
             return;
@@ -3802,7 +3845,7 @@ KeepLeftToRight(temperature);
 
         if (!applied) {
             Message(this, T("The NVIDIA driver didn't accept that frame rate limit."),
-                "HP Victus Control", MessageBoxButton.OK, MessageBoxImage.Warning);
+                "Victus Hub", MessageBoxButton.OK, MessageBoxImage.Warning);
             return;
         }
 
@@ -4059,7 +4102,7 @@ FlowDirection = FlowDirection.LeftToRight
         }
 
         if (announce)
-            _tray.ShowBalloon("HP Victus Control", F("Version {0} is available — Settings ▸ About to install it", result.LatestVersion));
+            _tray.ShowBalloon("Victus Hub", F("Version {0} is available — Settings ▸ About to install it", result.LatestVersion));
     }
 
     private async void CheckForAppUpdateDaily() {
@@ -4082,8 +4125,8 @@ FlowDirection = FlowDirection.LeftToRight
             SelfUpdate.Apply(downloaded);
 
             MessageBoxResult restart = Message(this,
-                F("Version {0} is installed. Restart HP Victus Control now to use it?", update.LatestVersion),
-                "HP Victus Control", MessageBoxButton.YesNo, MessageBoxImage.Question);
+                F("Version {0} is installed. Restart Victus Hub now to use it?", update.LatestVersion),
+                "Victus Hub", MessageBoxButton.YesNo, MessageBoxImage.Question);
 
             AppUpdateStatusText.Text = F("Version {0} installed — restart to use it.", update.LatestVersion);
             InstallAppUpdateButton.Visibility = Visibility.Collapsed;
@@ -4112,10 +4155,10 @@ FlowDirection = FlowDirection.LeftToRight
     private void CopyDiagnosticsButton_Click(object sender, RoutedEventArgs e) {
         try {
             System.Windows.Clipboard.SetText(BuildDiagnosticsReport());
-            Message(this, T("Diagnostics copied to clipboard."), "HP Victus Control",
+            Message(this, T("Diagnostics copied to clipboard."), "Victus Hub",
                 MessageBoxButton.OK, MessageBoxImage.Information);
         } catch (Exception ex) {
-            Message(this, F("Couldn't copy diagnostics: {0}", ex.Message), "HP Victus Control",
+            Message(this, F("Couldn't copy diagnostics: {0}", ex.Message), "Victus Hub",
                 MessageBoxButton.OK, MessageBoxImage.Warning);
         }
     }
@@ -4124,7 +4167,7 @@ FlowDirection = FlowDirection.LeftToRight
         var sb = new System.Text.StringBuilder();
         Version version = System.Reflection.Assembly.GetExecutingAssembly().GetName().Version ?? new Version(1, 0, 0);
 
-        sb.AppendLine("HP Victus Control diagnostics");
+        sb.AppendLine("Victus Hub diagnostics");
         sb.AppendLine($"App version: {version}");
         sb.AppendLine($"OS: {Environment.OSVersion.VersionString}");
 
@@ -4161,13 +4204,13 @@ FlowDirection = FlowDirection.LeftToRight
     private void ResetToDefaultsButton_Click(object sender, RoutedEventArgs e) {
         MessageBoxResult confirm = Message(this,
             T("This resets all app preferences — theme, performance mode, auto-switch, fan curve, alerts, and " +
-            "game profiles — back to defaults. Restart HP Victus Control afterward for it to fully take effect. Continue?"),
+            "game profiles — back to defaults. Restart Victus Hub afterward for it to fully take effect. Continue?"),
             T("Reset to defaults"), MessageBoxButton.YesNo, MessageBoxImage.Warning);
         if (confirm != MessageBoxResult.Yes) return;
 
         new AppSettings().Save();
-        Message(this, T("Defaults restored. Restart HP Victus Control for the change to fully take effect."),
-            "HP Victus Control", MessageBoxButton.OK, MessageBoxImage.Information);
+        Message(this, T("Defaults restored. Restart Victus Hub for the change to fully take effect."),
+            "Victus Hub", MessageBoxButton.OK, MessageBoxImage.Information);
     }
 
     // ----- Window / tray lifecycle --------------------------------------------------------
@@ -4190,7 +4233,7 @@ FlowDirection = FlowDirection.LeftToRight
         Hide();
 
         if (!_balloonShown) {
-            _tray.ShowBalloon("HP Victus Control", T("Still running in the background. Right-click the tray icon to exit."));
+            _tray.ShowBalloon("Victus Hub", T("Still running in the background. Right-click the tray icon to exit."));
             _balloonShown = true;
         }
     }

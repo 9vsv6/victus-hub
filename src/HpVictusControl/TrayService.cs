@@ -21,7 +21,7 @@ public sealed class TrayService : IDisposable {
     public TrayService() {
         var menu = new ContextMenuStrip { RightToLeft = Loc.IsArabic ? RightToLeft.Yes : RightToLeft.No };
 
-        var showItem = new ToolStripMenuItem(Loc.T("Open HP Victus Control"));
+        var showItem = new ToolStripMenuItem(Loc.T("Open Victus Hub"));
         showItem.Click += (_, _) => ShowRequested?.Invoke();
         showItem.Font = new Font(showItem.Font, FontStyle.Bold);
         menu.Items.Add(showItem);
@@ -47,7 +47,7 @@ public sealed class TrayService : IDisposable {
 
         _icon = new NotifyIcon {
             Icon = LoadAppIcon(),
-            Text = "HP Victus Control",
+            Text = "Victus Hub",
             Visible = true,
             ContextMenuStrip = menu,
         };

@@ -76,7 +76,7 @@ public static partial class Loc {
         ["Learns each mode while you use it on battery."] = "يتعلّم كل وضع أثناء استخدامه على البطارية.",
         ["{0} — = not used on battery yet."] = "{0} — = لم يُستخدم على البطارية بعد.",
         ["Windows didn't accept {0}Hz for this display."] = "لم يقبل Windows معدل {0}Hz لهذه الشاشة.",
-        ["HP Victus  |  CPU {0}  CPU fan {1} GPU fan {2} RPM"] = "HP Victus  |  CPU {0}  مروحة CPU {1}  مروحة GPU {2} RPM",
+        ["Victus Hub  |  CPU {0}  CPU fan {1} GPU fan {2} RPM"] = "Victus Hub  |  CPU {0}  مروحة CPU {1}  مروحة GPU {2} RPM",
         ["Switched to {0} mode"] = "تم التبديل إلى وضع {0}",
         ["Windows' power plan had changed — put it back to {0} mode"] = "تغيّرت خطة الطاقة في Windows — أُعيدت إلى وضع {0}",
         ["{0} temperature is high: {1:0.#}°C"] = "حرارة {0} مرتفعة: {1:0.#} درجة",
@@ -399,7 +399,7 @@ public static partial class Loc {
         ["Version {0} is available (you have {1})."] = "الإصدار {0} متاح (لديك {1}).",
         ["Version {0} is available — Settings ▸ About to install it"] = "الإصدار {0} متاح — الإعدادات ◂ حول التطبيق لتثبيته",
         ["Downloading version {0}..."] = "جارٍ تنزيل الإصدار {0}...",
-        ["Version {0} is installed. Restart HP Victus Control now to use it?"] = "تم تثبيت الإصدار {0}. إعادة تشغيل HP Victus Control الآن لاستخدامه؟",
+        ["Version {0} is installed. Restart Victus Hub now to use it?"] = "تم تثبيت الإصدار {0}. إعادة تشغيل Victus Hub الآن لاستخدامه؟",
         ["Version {0} installed — restart to use it."] = "تم تثبيت الإصدار {0} — أعد التشغيل لاستخدامه.",
         ["Update failed: {0}"] = "فشل التحديث: {0}",
         ["No release found. If the repository is private, its releases aren't readable without signing in."] =
@@ -418,10 +418,10 @@ public static partial class Loc {
         ["Resets all app preferences (theme, auto-switch, fan curve, alerts, game profiles) back to defaults."] =
             "يعيد كل تفضيلات التطبيق (المظهر، التبديل التلقائي، منحنى المروحة، التنبيهات، ملفات الألعاب) إلى الوضع الافتراضي.",
         ["This resets all app preferences — theme, performance mode, auto-switch, fan curve, alerts, and " +
-         "game profiles — back to defaults. Restart HP Victus Control afterward for it to fully take effect. Continue?"] =
+         "game profiles — back to defaults. Restart Victus Hub afterward for it to fully take effect. Continue?"] =
             "سيعيد هذا كل تفضيلات التطبيق — المظهر ووضع الأداء والتبديل التلقائي ومنحنى المروحة والتنبيهات وملفات الألعاب — إلى الوضع الافتراضي. " +
-            "أعد تشغيل HP Victus Control بعدها ليكتمل التطبيق. هل تريد المتابعة؟",
-        ["Defaults restored. Restart HP Victus Control for the change to fully take effect."] = "تمت استعادة الإعدادات الافتراضية. أعد تشغيل HP Victus Control ليكتمل التغيير.",
+            "أعد تشغيل Victus Hub بعدها ليكتمل التطبيق. هل تريد المتابعة؟",
+        ["Defaults restored. Restart Victus Hub for the change to fully take effect."] = "تمت استعادة الإعدادات الافتراضية. أعد تشغيل Victus Hub ليكتمل التغيير.",
         ["Still running in the background. Right-click the tray icon to exit."] = "ما زال يعمل في الخلفية. انقر بزر الفأرة الأيمن على الأيقونة للخروج.",
 
         // ----- BIOS settings -----
@@ -493,21 +493,21 @@ public static partial class Loc {
         ["Version {0} is installed in Program Files. This copy is running from {1}."] = "الإصدار {0} مثبّت في Program Files. هذه النسخة تعمل من {1}.",
         ["Not installed: running from {0}. Installing adds it to Program Files, the Start menu and Windows' installed apps."] =
             "غير مثبّت: يعمل من {0}. التثبيت يضيفه إلى Program Files وقائمة ابدأ والتطبيقات المثبّتة في Windows.",
-        ["Update the installed HP Victus Control from {0} to {1}?"] = "تحديث HP Victus Control المثبّت من {0} إلى {1}؟",
-        ["Install HP Victus Control on this PC?\n\nIt's copied to Program Files, gets a Start menu shortcut and appears in Windows' installed apps, so it can be removed cleanly. You can also do this later in Settings → About."] =
-            "تثبيت HP Victus Control على هذا الجهاز؟\n\nيُنسخ إلى Program Files ويحصل على اختصار في قائمة ابدأ ويظهر في التطبيقات المثبّتة في Windows، لتتمكن من إزالته بشكل نظيف. يمكنك فعل ذلك لاحقًا من الإعدادات ← حول التطبيق.",
+        ["Update the installed Victus Hub from {0} to {1}?"] = "تحديث Victus Hub المثبّت من {0} إلى {1}؟",
+        ["Install Victus Hub on this PC?\n\nIt's copied to Program Files, gets a Start menu shortcut and appears in Windows' installed apps, so it can be removed cleanly. You can also do this later in Settings → About."] =
+            "تثبيت Victus Hub على هذا الجهاز؟\n\nيُنسخ إلى Program Files ويحصل على اختصار في قائمة ابدأ ويظهر في التطبيقات المثبّتة في Windows، لتتمكن من إزالته بشكل نظيف. يمكنك فعل ذلك لاحقًا من الإعدادات ← حول التطبيق.",
         ["Couldn't start the uninstall: {0}"] = "تعذّر بدء إلغاء التثبيت: {0}",
-        ["Installed. HP Victus Control is in the Start menu and Windows' installed apps."] = "تم التثبيت. HP Victus Control موجود في قائمة ابدأ والتطبيقات المثبّتة في Windows.",
-        ["Installed. HP Victus Control will now restart from Program Files."] = "تم التثبيت. سيُعاد تشغيل HP Victus Control الآن من Program Files.",
+        ["Installed. Victus Hub is in the Start menu and Windows' installed apps."] = "تم التثبيت. Victus Hub موجود في قائمة ابدأ والتطبيقات المثبّتة في Windows.",
+        ["Installed. Victus Hub will now restart from Program Files."] = "تم التثبيت. سيُعاد تشغيل Victus Hub الآن من Program Files.",
         ["Couldn't install: {0}"] = "تعذّر التثبيت: {0}",
-        ["Uninstall HP Victus Control?\n\nThe fans and performance mode go back to the BIOS defaults, and the startup task, shortcut and app files are removed."] =
-            "إلغاء تثبيت HP Victus Control؟\n\nتعود المراوح ووضع الأداء إلى إعدادات BIOS الافتراضية، وتُحذف مهمة بدء التشغيل والاختصار وملفات التطبيق.",
+        ["Uninstall Victus Hub?\n\nThe fans and performance mode go back to the BIOS defaults, and the startup task, shortcut and app files are removed."] =
+            "إلغاء تثبيت Victus Hub؟\n\nتعود المراوح ووضع الأداء إلى إعدادات BIOS الافتراضية، وتُحذف مهمة بدء التشغيل والاختصار وملفات التطبيق.",
         ["Also delete your settings and game profiles?\n\nKeep them if you might install the app again."] =
             "حذف إعداداتك وملفات الألعاب أيضًا؟\n\nاحتفظ بها إذا كنت قد تثبّت التطبيق مجددًا.",
-        ["HP Victus Control has been uninstalled."] = "تم إلغاء تثبيت HP Victus Control.",
+        ["Victus Hub has been uninstalled."] = "تم إلغاء تثبيت Victus Hub.",
 
         // ----- Crash notice -----
-        ["HP Victus Control closed unexpectedly last time"] = "أُغلق HP Victus Control بشكل غير متوقع في المرة السابقة",
+        ["Victus Hub closed unexpectedly last time"] = "أُغلق Victus Hub بشكل غير متوقع في المرة السابقة",
         ["Copy report"] = "نسخ التقرير",
         ["Dismiss"] = "إخفاء",
         ["{0} — {1}. The full report is saved in {2}."] = "{0} — {1}. التقرير الكامل محفوظ في {2}.",
@@ -517,7 +517,7 @@ public static partial class Loc {
         ["Supported here"] = "المدعوم هنا",
         ["Fan and performance control"] = "التحكم بالمراوح والأداء",
         // ----- Tray menu -----
-        ["Open HP Victus Control"] = "فتح HP Victus Control",
+        ["Open Victus Hub"] = "فتح Victus Hub",
         ["Max fan speed"] = "أقصى سرعة للمروحة",
         ["Performance mode"] = "وضع الأداء",
 
@@ -544,9 +544,34 @@ public static partial class Loc {
         ["Turn it off after no input for"] = "إطفاؤها بعد عدم الاستخدام لمدة",
         ["{0}, Cool while idle"] = "{0}، تبريد أثناء الخمول",
         ["The download doesn't match the release's checksum, so it wasn't used."] = "الملف المحمّل لا يطابق checksum الإصدار، لذلك لم يُستخدم.",
-        ["GPU power: a higher power limit and Dynamic Boost for the NVIDIA GPU"] = "طاقة GPU: حد طاقة أعلى وDynamic Boost لكرت NVIDIA",
-        ["Cool mode when idle: the fans quiet down while you're away and come back when you return"] = "وضع التبريد عند الخمول: تهدأ المراوح أثناء غيابك وتعود عند رجوعك",
-        ["Keyboard backlight switch, and it can turn itself off when the laptop sits idle"] = "مفتاح لإضاءة لوحة المفاتيح، ويمكنها أن تنطفئ تلقائيًا عند خمول الجهاز",
-        ["Fixed: the Drivers toolbar was cut off when an update's details were open"] = "إصلاح: كان شريط أدوات التعريفات يُقتطع عند فتح تفاصيل تحديث",
+        // ----- Settings sections -----
+        ["General"] = "عام",
+        ["Startup"] = "التشغيل",
+        ["Temperature alerts"] = "تنبيهات الحرارة",
+        ["Other"] = "أخرى",
+        ["Interface language"] = "لغة الواجهة",
+
+        // ----- What's new pop-up -----
+        ["Updated"] = "تم التحديث",
+        ["New Settings layout"] = "تصميم جديد للإعدادات",
+        ["Settings are grouped in a side list, one section at a time"] = "الإعدادات مجمّعة في قائمة جانبية، قسم واحد في كل مرة",
+        ["The app can download and install its own updates, checked against the release's checksum"] = "يستطيع التطبيق تنزيل تحديثاته وتثبيتها بنفسه بعد مطابقتها مع checksum الإصدار",
+        ["The CPU dial no longer draws outside its card above 50°C, and the Drivers toolbar is no longer cut off"] = "لم يعد مؤشر CPU يُرسم خارج بطاقته فوق 50 درجة، ولم يعد شريط أدوات التعريفات يُقتطع",
+        ["A higher power limit and Dynamic Boost for the NVIDIA GPU"] = "حد طاقة أعلى وDynamic Boost لكرت NVIDIA",
+        ["The fans quiet down while you're away and come back when you return"] = "تهدأ المراوح أثناء غيابك وتعود عند رجوعك",
+        ["A switch for it, and it can turn itself off while the laptop sits idle"] = "مفتاح تشغيل، ويمكنها أن تنطفئ تلقائيًا أثناء خمول الجهاز",
+        ["Safer app updates"] = "تحديثات أكثر أمانًا",
+        ["Each download is checked against the release's checksum before it's used"] = "يُطابَق كل ملف محمّل مع checksum الإصدار قبل استخدامه",
+        ["Fixes"] = "إصلاحات",
+        ["The Drivers toolbar is no longer cut off when an update's details are open"] = "لم يعد شريط أدوات التعريفات يُقتطع عند فتح تفاصيل تحديث",
+        ["Linen themes"] = "مظهر Linen",
+        ["Arabic interface"] = "الواجهة العربية",
+        ["Sized to the window"] = "حجم يناسب النافذة",
+        ["Battery time per mode"] = "مدة البطارية لكل وضع",
+        ["Drive health and BIOS settings"] = "صحة القرص وإعدادات BIOS",
+        ["Games add themselves"] = "الألعاب تُضاف تلقائيًا",
+        ["Smarter driver checks"] = "فحص أذكى للتعريفات",
+        ["Self-update"] = "التحديث الذاتي",
+        ["The CPU dial no longer draws outside its card above 50°C"] = "لم يعد مؤشر CPU يُرسم خارج بطاقته فوق 50 درجة",
     };
 }

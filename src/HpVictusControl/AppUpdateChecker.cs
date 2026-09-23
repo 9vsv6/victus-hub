@@ -68,7 +68,7 @@ public static class AppUpdateChecker {
             throw new IOException(Loc.F("The download stopped early ({0:N0} of {1:N0} bytes).", written.Length, update.AssetSize));
         }
 
-        // Releases from 1.6.0 on carry "<exe>.sha256" beside the exe; older ones don't, so a missing
+        // Releases from 1.5.0 on carry "<exe>.sha256" beside the exe; older ones don't, so a missing
         // checksum isn't an error, but one that doesn't match is.
         string? expected = await TryDownloadChecksumAsync(client, update.AssetUrl + ".sha256");
         if (expected != null) {

@@ -1,6 +1,6 @@
 <#
 .SYNOPSIS
-    Writes the three winget manifest files for one release of HP Victus Control.
+    Writes the three winget manifest files for one release of Victus Hub.
 
 .DESCRIPTION
     The release exe is a single self-contained file, so winget installs it as a "portable" package.
@@ -8,7 +8,7 @@
     copied into a fork of microsoft/winget-pkgs and submitted as a pull request.
 
 .EXAMPLE
-    ./tools/New-WingetManifest.ps1 -Version 1.6.0 -ExePath publish/HpVictusControl.exe -OutDir publish/winget
+    ./tools/New-WingetManifest.ps1 -Version 1.5.0 -ExePath publish/HpVictusControl.exe -OutDir publish/winget
 #>
 param(
     [Parameter(Mandatory)] [string] $Version,
@@ -57,7 +57,7 @@ PackageVersion: $Version
 PackageLocale: en-US
 Publisher: 9vsv6
 PublisherUrl: https://github.com/9vsv6
-PackageName: HP Victus Control
+PackageName: Victus Hub
 PackageUrl: https://github.com/$Repository
 License: Proprietary
 ShortDescription: Fan, performance, GPU power and driver control for HP Victus and Omen laptops.

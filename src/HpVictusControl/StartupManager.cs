@@ -110,7 +110,7 @@ public static class StartupManager {
             <?xml version="1.0" encoding="UTF-16"?>
             <Task version="1.2" xmlns="http://schemas.microsoft.com/windows/2004/02/mit/task">
               <RegistrationInfo>
-                <Description>Starts HP Victus Control with administrator rights at sign-in.</Description>
+                <Description>Starts Victus Hub with administrator rights at sign-in.</Description>
               </RegistrationInfo>
               <Triggers>
                 <LogonTrigger>

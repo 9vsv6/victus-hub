@@ -1,8 +1,8 @@
-# HP Victus Control
+# Victus Hub
 
 **English** · [العربية](README.ar.md)
 
-A tiny, low-overhead replacement for the fan and performance parts of Omen Gaming Hub, built
+Victus Hub (formerly HP Victus Control) is a tiny, low-overhead replacement for the fan and performance parts of Omen Gaming Hub, built
 for an HP Victus 15. It should also work on Omen laptops with the same BIOS interface.
 
 It talks directly to the same BIOS WMI provider (`root\wmi`, class `hpqBIntM`) that HP's own
@@ -66,7 +66,7 @@ tray icon that polls the BIOS every 2 seconds.
 - Detects what the laptop supports (fan control, graphics switch, BIOS settings, NVIDIA GPU),
   hides what it doesn't, and lists the result on the System page
 - Light and dark themes, and an interface that scales with the window
-- English or Arabic interface (Settings → Appearance → Language). Arabic uses a right-to-left
+- English or Arabic interface (Settings → Language). Arabic uses a right-to-left
   layout and the Alexandria typeface, with technical terms (CPU, GPU, RAM, BIOS…) kept in English
 
 ## Requirements
@@ -103,8 +103,9 @@ structure, and the `hpqBIntM`/`hpqBDataIn` WMI classes) matches what the communi
 reverse-engineered and documented. The main reference is the [OmenMon](https://github.com/OmenMon/OmenMon)
 project, which this app used to learn which BIOS command bytes correspond to which function. The
 BIOS/WMI calls used here are separate from OmenMon and much narrower in scope: no keyboard
-backlight, no CPU/GPU power tables and no direct Embedded Controller access. The app only uses fan
-level, max fan, performance mode, and the single BIOS temperature sensor.
+colors, no CPU power tables and no direct Embedded Controller access. The app only uses fan level,
+max fan, performance mode, GPU power (custom TGP and Dynamic Boost), the keyboard backlight's on/off
+switch, and the single BIOS temperature sensor.
 
 **Fan level unit**: the BIOS reports and accepts fan speed as a single byte per fan. Empirically
 this tracks roughly "hundreds of RPM" (for example, a value of 45 ≈ 4500 RPM). The app displays it

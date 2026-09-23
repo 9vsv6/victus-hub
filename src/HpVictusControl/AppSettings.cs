@@ -61,6 +61,8 @@ public sealed class AppSettings {
     public int CoolRefreshRateHz { get; set; } = 60;
     public string LastTab { get; set; } = "Performance";
     public string LastSection { get; set; } = "Performance";
+    // The Settings page's section list: the name of the entry last opened.
+    public string SettingsSection { get; set; } = "AppearanceNav";
     // Global shortcuts as text ("Ctrl+Alt+F12"); an empty string turns that shortcut off.
     public string CycleModeHotkey { get; set; } = "Ctrl+Alt+F12";
     public string MaxFanHotkey { get; set; } = "Ctrl+Alt+F11";

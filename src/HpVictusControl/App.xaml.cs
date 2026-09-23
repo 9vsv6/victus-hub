@@ -69,7 +69,7 @@ public partial class App : System.Windows.Application {
             CrashLog.Write(args.Exception, fatal: false);
             MessageBox.Show(
                 $"Unexpected error: {args.Exception.Message}",
-                "HP Victus Control",
+                "Victus Hub",
                 MessageBoxButton.OK,
                 MessageBoxImage.Error);
             args.Handled = true;
@@ -142,13 +142,13 @@ public partial class App : System.Windows.Application {
     // power plan, then removes the app.
     private static void RunUninstall() {
         MessageBoxResult confirmed = Loc.Message(null,
-            Loc.T("Uninstall HP Victus Control?\n\nThe fans and performance mode go back to the BIOS defaults, and the startup task, shortcut and app files are removed."),
-            "HP Victus Control", MessageBoxButton.YesNo, MessageBoxImage.Question);
+            Loc.T("Uninstall Victus Hub?\n\nThe fans and performance mode go back to the BIOS defaults, and the startup task, shortcut and app files are removed."),
+            "Victus Hub", MessageBoxButton.YesNo, MessageBoxImage.Question);
         if (confirmed != MessageBoxResult.Yes) return;
 
         bool removeSettings = Loc.Message(null,
             Loc.T("Also delete your settings and game profiles?\n\nKeep them if you might install the app again."),
-            "HP Victus Control", MessageBoxButton.YesNo, MessageBoxImage.Question) == MessageBoxResult.Yes;
+            "Victus Hub", MessageBoxButton.YesNo, MessageBoxImage.Question) == MessageBoxResult.Yes;
 
         // A running copy holds its files open; ask it to close and wait for it to let go.
         try {
@@ -167,7 +167,7 @@ public partial class App : System.Windows.Application {
         Installer.RestoreHardwareDefaults();
         Installer.Uninstall(removeSettings);
 
-        Loc.Message(null, Loc.T("HP Victus Control has been uninstalled."), "HP Victus Control",
+        Loc.Message(null, Loc.T("Victus Hub has been uninstalled."), "Victus Hub",
             MessageBoxButton.OK, MessageBoxImage.Information);
     }
 

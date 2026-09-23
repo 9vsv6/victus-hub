@@ -20,7 +20,7 @@ public static class Installer {
     public static string InstalledExe => Path.Combine(InstallDirectory, "HpVictusControl.exe");
 
     private static string ShortcutPath => Path.Combine(
-        Environment.GetFolderPath(Environment.SpecialFolder.CommonPrograms), "HP Victus Control.lnk");
+        Environment.GetFolderPath(Environment.SpecialFolder.CommonPrograms), "Victus Hub.lnk");
 
     private static string SettingsFolder => Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "HP Victus Control");
@@ -41,6 +41,35 @@ public static class Installer {
             if (!File.Exists(InstalledExe)) return null;
             FileVersionInfo info = FileVersionInfo.GetVersionInfo(InstalledExe);
             return new Version(info.FileMajorPart, info.FileMinorPart, info.FileBuildPart);
+        }
+    }
+
+    // Where the Start menu shortcut lived before the app was renamed from HP Victus Control.
+    private static string OldShortcutPath => Path.Combine(
+        Environment.GetFolderPath(Environment.SpecialFolder.CommonPrograms), "HP Victus Control.lnk");
+
+    /// <summary>
+    /// Keeps Windows' installed-apps entry and the Start menu shortcut in step with the copy in
+    /// Program Files, which "Start with Windows" and self-update replace without going through
+    /// <see cref="Install"/>: the version number, and the name since the rename to Victus Hub.
+    /// </summary>
+    public static void SyncListing() {
+        try {
+            Version? installed = InstalledVersion;
+            using RegistryKey? key = Registry.LocalMachine.OpenSubKey(UninstallKeyPath, writable: true);
+            if (key == null) return;
+            if (installed != null && key.GetValue("DisplayVersion") as string != installed.ToString(3))
+                key.SetValue("DisplayVersion", installed.ToString(3));
+            if (key.GetValue("DisplayName") as string != "Victus Hub") {
+                key.SetValue("DisplayName", "Victus Hub");
+                key.SetValue("Publisher", "Victus Hub project");
+            }
+            if (File.Exists(OldShortcutPath)) {
+                if (File.Exists(ShortcutPath)) File.Delete(OldShortcutPath);
+                else File.Move(OldShortcutPath, ShortcutPath);
+            }
+        } catch {
+            // Needs admin, which the running app has; a stale entry there is harmless anyway.
         }
     }
 
@@ -75,6 +104,7 @@ public static class Installer {
         }
 
         TryDelete(ShortcutPath);
+        TryDelete(OldShortcutPath);
         try {
             Registry.LocalMachine.DeleteSubKeyTree(UninstallKeyPath, throwOnMissingSubKey: false);
         } catch {
@@ -148,9 +178,9 @@ public static class Installer {
 
     private static void RegisterUninstallEntry(string exe, Version version) {
         using RegistryKey key = Registry.LocalMachine.CreateSubKey(UninstallKeyPath, writable: true);
-        key.SetValue("DisplayName", "HP Victus Control");
+        key.SetValue("DisplayName", "Victus Hub");
         key.SetValue("DisplayVersion", version.ToString(3));
-        key.SetValue("Publisher", "HP Victus Control project");
+        key.SetValue("Publisher", "Victus Hub project");
         key.SetValue("DisplayIcon", exe);
         key.SetValue("InstallLocation", Path.GetDirectoryName(exe)!);
         key.SetValue("UninstallString", $"\"{exe}\" {UninstallArgument}");
