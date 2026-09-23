@@ -24,7 +24,7 @@ public static class StartupManager {
 
     // A highest-privilege task pointing at a user-writable exe would let any program replace that
     // exe and get admin without a prompt, so the task only ever runs a copy in Program Files.
-    private static readonly string InstallDirectory = Path.Combine(
+    internal static readonly string InstallDirectory = Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles), "HP Victus Control");
 
     private static readonly string SchTasksPath = Path.Combine(Environment.SystemDirectory, "schtasks.exe");
@@ -66,7 +66,7 @@ public static class StartupManager {
 
     private static bool TaskExists() => RunSchTasks($"/Query /TN \"{TaskName}\"") == 0;
 
-    private static string InstallCopy() {
+    internal static string InstallCopy() {
         if (!Path.IsPathRooted(InstallDirectory)) throw new InvalidOperationException("Couldn't locate the Program Files folder.");
 
         string exePath = Environment.ProcessPath ?? throw new InvalidOperationException("Couldn't locate the running executable.");
@@ -87,7 +87,7 @@ public static class StartupManager {
         return installedExe;
     }
 
-    private static bool IsRunningFromInstallDirectory() {
+    internal static bool IsRunningFromInstallDirectory() {
         string? exeDir = Path.GetDirectoryName(Environment.ProcessPath);
         return exeDir != null && string.Equals(
             Path.GetFullPath(exeDir).TrimEnd('\\'), Path.GetFullPath(InstallDirectory).TrimEnd('\\'),

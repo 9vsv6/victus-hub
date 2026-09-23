@@ -19,29 +19,29 @@ public sealed class TrayService : IDisposable {
     public event Action<HpFanMode>? FanModeRequested;
 
     public TrayService() {
-        var menu = new ContextMenuStrip();
+        var menu = new ContextMenuStrip { RightToLeft = Loc.IsArabic ? RightToLeft.Yes : RightToLeft.No };
 
-        var showItem = new ToolStripMenuItem("Open HP Victus Control");
+        var showItem = new ToolStripMenuItem(Loc.T("Open HP Victus Control"));
         showItem.Click += (_, _) => ShowRequested?.Invoke();
         showItem.Font = new Font(showItem.Font, FontStyle.Bold);
         menu.Items.Add(showItem);
         menu.Items.Add(new ToolStripSeparator());
 
-        _maxFanItem = new ToolStripMenuItem("Max fan speed");
+        _maxFanItem = new ToolStripMenuItem(Loc.T("Max fan speed"));
         _maxFanItem.Click += (_, _) => MaxFanToggleRequested?.Invoke(!_maxFanItem.Checked);
         menu.Items.Add(_maxFanItem);
 
-        var modeMenu = new ToolStripMenuItem("Performance mode");
-        _balancedItem = new ToolStripMenuItem("Balanced", null, (_, _) => FanModeRequested?.Invoke(HpFanMode.Balanced));
-        _performanceItem = new ToolStripMenuItem("Performance", null, (_, _) => FanModeRequested?.Invoke(HpFanMode.Performance));
-        _coolItem = new ToolStripMenuItem("Cool", null, (_, _) => FanModeRequested?.Invoke(HpFanMode.Cool));
+        var modeMenu = new ToolStripMenuItem(Loc.T("Performance mode"));
+        _balancedItem = new ToolStripMenuItem(Loc.T("Balanced"), null, (_, _) => FanModeRequested?.Invoke(HpFanMode.Balanced));
+        _performanceItem = new ToolStripMenuItem(Loc.T("Performance"), null, (_, _) => FanModeRequested?.Invoke(HpFanMode.Performance));
+        _coolItem = new ToolStripMenuItem(Loc.T("Cool"), null, (_, _) => FanModeRequested?.Invoke(HpFanMode.Cool));
         modeMenu.DropDownItems.Add(_balancedItem);
         modeMenu.DropDownItems.Add(_performanceItem);
         modeMenu.DropDownItems.Add(_coolItem);
         menu.Items.Add(modeMenu);
 
         menu.Items.Add(new ToolStripSeparator());
-        var exitItem = new ToolStripMenuItem("Exit");
+        var exitItem = new ToolStripMenuItem(Loc.T("Exit"));
         exitItem.Click += (_, _) => ExitRequested?.Invoke();
         menu.Items.Add(exitItem);
 

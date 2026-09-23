@@ -12,10 +12,13 @@ tray icon that polls the BIOS every 2 seconds.
 - Live temperature + fan speed readout (tray tooltip and main window)
 - Manual fan speed per fan (best-effort — see note below)
 - Force max fan speed
-- Performance mode switch: Balanced / Performance / Cool
+- Performance mode switch: Balanced / Performance / Cool, with the battery time each mode would
+  give from the current charge — learned from how much power each mode actually draws on battery
 - Per-game profiles: performance mode, refresh rate, resolution, FPS cap, max fan, game boost
   (CPU priority, OneDrive paused) and which GPU the game runs on — applied when the game starts,
   put back when it closes; optional Wi-Fi tuning (background scanning off) while any game runs
+- Games are added to that list the first time they're played, straight from a Steam, Epic, Xbox,
+  GOG or Battle.net library, with nothing switched on until you choose it
 - Configurable global shortcuts for max fan and cycling the performance mode
 - Keeps Windows' power plan in step with the selected mode
 - Driver & BIOS updates from HP, NVIDIA and Intel with filters by type, search, sorting and a
@@ -23,8 +26,16 @@ tray icon that polls the BIOS every 2 seconds.
   unit doesn't have are filtered out — wireless radios from other configurations, and SSD firmware
   for drives that aren't fitted or that already run the offered revision. Plus a battery/charger
   safety check before BIOS installs and automatic cleanup of downloaded installers
-- System page: laptop details, battery health, BIOS graphics switch (where the model has one),
-  fan test, shader cache cleanup
+- System page: laptop details, battery health, drive health (SSD temperature and remaining write
+  endurance), BIOS graphics switch (where the model has one), fan test, shader cache cleanup
+- Checks its own GitHub releases once a day and can download and install a newer build in place
+- Installs itself: offers to copy into Program Files with a Start menu shortcut and an entry in
+  Windows' installed apps; uninstalling from there puts the fans and power plan back to defaults
+- Logs crashes to `%APPDATA%\HP Victus Control\crash.log` and says so on the next launch
+- Detects what the laptop supports (fan control, graphics switch, BIOS settings, NVIDIA GPU) and
+  hides what it doesn't, listing the result on the System page
+- English or Arabic interface (Settings → Appearance → Language); Arabic uses a right-to-left
+  layout and the Alexandria typeface, with technical terms (CPU, GPU, RAM, BIOS…) kept in English
 
 ## Requirements
 

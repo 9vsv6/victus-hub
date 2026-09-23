@@ -2,22 +2,27 @@
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         Title="HP Victus Control" Height="640" Width="560"
-        MinHeight="480" MinWidth="480"
+        MinHeight="600" MinWidth="900"
         Background="{DynamicResource WindowBackgroundBrush}"
         FontFamily="Segoe UI Variable Text, Segoe UI"
         WindowStartupLocation="CenterScreen">
     <Window.Resources>
 
-        <SolidColorBrush x:Key="AccentBrush" Color="#22C55E"/>
-        <SolidColorBrush x:Key="AccentHoverBrush" Color="#1CA84E"/>
-        <SolidColorBrush x:Key="CardBrush" Color="#FFFFFF"/>
-        <SolidColorBrush x:Key="BorderBrush2" Color="#E4E6EB"/>
-        <SolidColorBrush x:Key="TrackBrush" Color="#EEF0F3"/>
-        <SolidColorBrush x:Key="TextPrimaryBrush" Color="#1B1F24"/>
-        <SolidColorBrush x:Key="TextSecondaryBrush" Color="#8A8F98"/>
-        <SolidColorBrush x:Key="WindowBackgroundBrush" Color="#F4F5F7"/>
-        <SolidColorBrush x:Key="GlowFillBrush" Color="#E8F9EF"/>
-        <Color x:Key="AccentColorRaw">#22C55E</Color>
+        <!-- Linen (light) defaults; ApplyTheme swaps in Linen or its dark counterpart at start -->
+        <SolidColorBrush x:Key="AccentBrush" Color="#5E8B62"/>
+        <SolidColorBrush x:Key="AccentHoverBrush" Color="#4E7A53"/>
+        <SolidColorBrush x:Key="AccentTextBrush" Color="#FFFFFF"/>
+        <SolidColorBrush x:Key="CardBrush" Color="#FBF8F1"/>
+        <SolidColorBrush x:Key="BorderBrush2" Color="#E2D9C8"/>
+        <SolidColorBrush x:Key="TrackBrush" Color="#EAE3D5"/>
+        <SolidColorBrush x:Key="TextPrimaryBrush" Color="#3C3836"/>
+        <SolidColorBrush x:Key="TextSecondaryBrush" Color="#857C6C"/>
+        <SolidColorBrush x:Key="TextDisabledBrush" Color="#BDB4A4"/>
+        <SolidColorBrush x:Key="WindowBackgroundBrush" Color="#F1EBDF"/>
+        <SolidColorBrush x:Key="GlowFillBrush" Color="#E4EDE0"/>
+        <!-- The halo behind selected controls. Static (effects can't follow a theme switch), so it's a
+             sage that sits between the light and dark accents, and kept faint in both. -->
+        <Color x:Key="AccentColorRaw">#7FA383</Color>
         <!-- Dial colours once a temperature stops being comfortable -->
         <SolidColorBrush x:Key="GaugeWarmBrush" Color="#D97706"/>
         <SolidColorBrush x:Key="GaugeHotBrush" Color="#DC2626"/>
@@ -90,7 +95,7 @@
                                 <Setter TargetName="Bg" Property="BorderBrush" Value="{DynamicResource AccentBrush}"/>
                                 <Setter TargetName="Bg" Property="Effect">
                                     <Setter.Value>
-                                        <DropShadowEffect BlurRadius="16" ShadowDepth="0" Opacity="0.45" Color="{StaticResource AccentColorRaw}"/>
+                                        <DropShadowEffect BlurRadius="16" ShadowDepth="0" Opacity="0.25" Color="{StaticResource AccentColorRaw}"/>
                                     </Setter.Value>
                                 </Setter>
                                 <Setter Property="Foreground" Value="{DynamicResource AccentBrush}"/>
@@ -99,7 +104,7 @@
                                 <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}"/>
                             </Trigger>
                             <Trigger Property="IsEnabled" Value="False">
-                                <Setter Property="Foreground" Value="#C7CBD1"/>
+                                <Setter Property="Foreground" Value="{DynamicResource TextDisabledBrush}"/>
                             </Trigger>
                         </ControlTemplate.Triggers>
                     </ControlTemplate>
@@ -131,7 +136,7 @@
                                 <Setter TargetName="Bg" Property="BorderBrush" Value="{DynamicResource AccentBrush}"/>
                                 <Setter TargetName="Bg" Property="Effect">
                                     <Setter.Value>
-                                        <DropShadowEffect BlurRadius="14" ShadowDepth="0" Opacity="0.4" Color="{StaticResource AccentColorRaw}"/>
+                                        <DropShadowEffect BlurRadius="14" ShadowDepth="0" Opacity="0.22" Color="{StaticResource AccentColorRaw}"/>
                                     </Setter.Value>
                                 </Setter>
                                 <Setter Property="Foreground" Value="{DynamicResource AccentBrush}"/>
@@ -156,7 +161,7 @@
                         <StackPanel Orientation="Horizontal">
                             <Border x:Name="Box" Width="18" Height="18" CornerRadius="4" BorderThickness="1.5"
                                     BorderBrush="{DynamicResource BorderBrush2}" Background="{DynamicResource CardBrush}" VerticalAlignment="Center">
-                                <Path x:Name="Check" Data="M4,9.5 L7.5,13 L14,4.5" Stroke="White" StrokeThickness="2"
+                                <Path x:Name="Check" Data="M4,9.5 L7.5,13 L14,4.5" Stroke="{DynamicResource AccentTextBrush}" StrokeThickness="2"
                                       StrokeStartLineCap="Round" StrokeEndLineCap="Round" StrokeLineJoin="Round"
                                       Visibility="Collapsed"/>
                             </Border>
@@ -169,8 +174,8 @@
                                 <Setter TargetName="Check" Property="Visibility" Value="Visible"/>
                             </Trigger>
                             <Trigger Property="IsEnabled" Value="False">
-                                <Setter Property="Foreground" Value="#C7CBD1"/>
-                                <Setter TargetName="Box" Property="BorderBrush" Value="#E4E6EB"/>
+                                <Setter Property="Foreground" Value="{DynamicResource TextDisabledBrush}"/>
+                                <Setter TargetName="Box" Property="BorderBrush" Value="{DynamicResource BorderBrush2}"/>
                             </Trigger>
                         </ControlTemplate.Triggers>
                     </ControlTemplate>
@@ -186,14 +191,24 @@
             <Setter Property="Template">
                 <Setter.Value>
                     <ControlTemplate TargetType="CheckBox">
-                        <DockPanel LastChildFill="False">
-                            <ContentPresenter DockPanel.Dock="Left" VerticalAlignment="Center"/>
-                            <Border x:Name="Track" DockPanel.Dock="Right" Width="38" Height="20" CornerRadius="10"
+                        <!-- The switch is placed first so it always gets its full size; the label takes
+                             what's left and wraps, rather than pushing the switch out of a narrow card
+                             (Arabic labels in Alexandria run noticeably wider). -->
+                        <DockPanel LastChildFill="True">
+                            <Border x:Name="Track" DockPanel.Dock="Right" Width="38" Height="20" CornerRadius="10" Margin="10,0,0,0"
+                                    VerticalAlignment="Center"
                                     Background="{DynamicResource TrackBrush}" BorderThickness="1" BorderBrush="{DynamicResource BorderBrush2}">
                                 <Border x:Name="Thumb" Width="14" Height="14" CornerRadius="7"
                                         Background="{DynamicResource TextSecondaryBrush}"
                                         HorizontalAlignment="Left" Margin="2,0,0,0"/>
                             </Border>
+                            <ContentPresenter VerticalAlignment="Center">
+                                <ContentPresenter.Resources>
+                                    <Style TargetType="TextBlock">
+                                        <Setter Property="TextWrapping" Value="Wrap"/>
+                                    </Style>
+                                </ContentPresenter.Resources>
+                            </ContentPresenter>
                         </DockPanel>
                         <ControlTemplate.Triggers>
                             <Trigger Property="IsChecked" Value="True">
@@ -204,12 +219,12 @@
                                 <Setter TargetName="Thumb" Property="Margin" Value="0,0,2,0"/>
                                 <Setter TargetName="Track" Property="Effect">
                                     <Setter.Value>
-                                        <DropShadowEffect BlurRadius="10" ShadowDepth="0" Opacity="0.55" Color="{StaticResource AccentColorRaw}"/>
+                                        <DropShadowEffect BlurRadius="10" ShadowDepth="0" Opacity="0.3" Color="{StaticResource AccentColorRaw}"/>
                                     </Setter.Value>
                                 </Setter>
                             </Trigger>
                             <Trigger Property="IsEnabled" Value="False">
-                                <Setter Property="Foreground" Value="#C7CBD1"/>
+                                <Setter Property="Foreground" Value="{DynamicResource TextDisabledBrush}"/>
                             </Trigger>
                         </ControlTemplate.Triggers>
                     </ControlTemplate>
@@ -224,7 +239,7 @@
                     <ControlTemplate TargetType="Thumb">
                         <Ellipse Width="16" Height="16" Fill="{DynamicResource CardBrush}" Stroke="{DynamicResource AccentBrush}" StrokeThickness="2.5">
                             <Ellipse.Effect>
-                                <DropShadowEffect BlurRadius="8" ShadowDepth="0" Opacity="0.5" Color="{StaticResource AccentColorRaw}"/>
+                                <DropShadowEffect BlurRadius="8" ShadowDepth="0" Opacity="0.3" Color="{StaticResource AccentColorRaw}"/>
                             </Ellipse.Effect>
                         </Ellipse>
                     </ControlTemplate>
@@ -301,7 +316,7 @@
         <!-- Primary action button -->
         <Style x:Key="PrimaryButton" TargetType="Button">
             <Setter Property="Background" Value="{DynamicResource AccentBrush}"/>
-            <Setter Property="Foreground" Value="White"/>
+            <Setter Property="Foreground" Value="{DynamicResource AccentTextBrush}"/>
             <Setter Property="FontWeight" Value="SemiBold"/>
             <Setter Property="FontSize" Value="13"/>
             <Setter Property="BorderThickness" Value="0"/>
@@ -350,6 +365,25 @@
                             <Trigger Property="IsEnabled" Value="False">
                                 <Setter Property="Foreground" Value="{DynamicResource TextSecondaryBrush}"/>
                                 <Setter TargetName="Bg" Property="Opacity" Value="0.6"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <!-- Text-only action for secondary things like "Open downloads folder" -->
+        <Style x:Key="LinkButton" TargetType="Button">
+            <Setter Property="Foreground" Value="{DynamicResource AccentBrush}"/>
+            <Setter Property="FontSize" Value="11"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <TextBlock x:Name="Label" Text="{TemplateBinding Content}" Background="Transparent"/>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Label" Property="TextDecorations" Value="Underline"/>
                             </Trigger>
                         </ControlTemplate.Triggers>
                     </ControlTemplate>
@@ -480,7 +514,11 @@
 
     </Window.Resources>
 
-    <Grid Margin="20">
+    <!-- The whole interface is scaled to the window (see UpdateInterfaceScale): text, icons and
+         buttons grow on a large or maximized window and shrink a little on a small one, while the
+         layout still reflows to fill the width. ScaleHost is the unscaled frame it's measured by. -->
+    <Border x:Name="ScaleHost" SizeChanged="ScaleHost_SizeChanged">
+    <Grid x:Name="RootLayout" Margin="20">
         <Grid.ColumnDefinitions>
             <ColumnDefinition Width="84"/>
             <ColumnDefinition Width="*"/>
@@ -510,11 +548,49 @@
             <RowDefinition Height="Auto"/>
         </Grid.RowDefinitions>
 
-        <!-- Support / status banner -->
-        <Border x:Name="StatusBanner" Grid.Row="0" Background="#FFF3CD" BorderBrush="#FFE69C" BorderThickness="1"
-                CornerRadius="8" Padding="10" Margin="0,0,0,12" Visibility="Collapsed">
-            <TextBlock x:Name="StatusBannerText" TextWrapping="Wrap" Foreground="#664D03" FontSize="12"/>
-        </Border>
+        <StackPanel Grid.Row="0" MaxWidth="1250">
+            <!-- Support / status banner -->
+            <Border x:Name="StatusBanner" Background="#FFF3CD" BorderBrush="#FFE69C" BorderThickness="1"
+                    CornerRadius="8" Padding="10" Margin="0,0,0,12" Visibility="Collapsed">
+                <TextBlock x:Name="StatusBannerText" TextWrapping="Wrap" Foreground="#664D03" FontSize="12"/>
+            </Border>
+
+            <!-- After a crash that closed the app: says so once, with the report to copy -->
+            <Border x:Name="CrashNoticeCard" Style="{StaticResource Card}" BorderBrush="{DynamicResource GaugeWarmBrush}" Visibility="Collapsed">
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="Auto"/>
+                    </Grid.ColumnDefinitions>
+                    <StackPanel VerticalAlignment="Center" Margin="0,0,12,0">
+                        <TextBlock Text="HP Victus Control closed unexpectedly last time" Style="{StaticResource SectionHeader}" Margin="0,0,0,4"/>
+                        <TextBlock x:Name="CrashNoticeText" FontSize="11" TextWrapping="Wrap" Foreground="{DynamicResource TextSecondaryBrush}"/>
+                    </StackPanel>
+                    <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
+                        <Button Content="Copy report" Style="{StaticResource SecondaryButton}" Padding="14,8" Margin="0,0,8,0"
+                                Click="CopyCrashReport_Click"/>
+                        <Button Content="Dismiss" Style="{StaticResource SecondaryButton}" Padding="14,8"
+                                Click="DismissCrashNotice_Click"/>
+                    </StackPanel>
+                </Grid>
+            </Border>
+
+            <!-- What's new: shown once after the app updates, above whichever page is open -->
+            <Border x:Name="WhatsNewCard" Style="{StaticResource HeroCard}" Visibility="Collapsed">
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="Auto"/>
+                    </Grid.ColumnDefinitions>
+                    <StackPanel>
+                        <TextBlock x:Name="WhatsNewTitleText" Style="{StaticResource SectionHeader}" Margin="0,0,0,8"/>
+                        <StackPanel x:Name="WhatsNewList"/>
+                    </StackPanel>
+                    <Button Grid.Column="1" Content="Got it" Style="{StaticResource PrimaryButton}" Padding="18,8"
+                            VerticalAlignment="Top" Margin="16,0,0,0" Click="WhatsNewDismiss_Click"/>
+                </Grid>
+            </Border>
+        </StackPanel>
 
         <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto">
             <!-- Capped and centred: on a wide window the cards would otherwise stretch to the full
@@ -563,7 +639,7 @@
                     <StackPanel x:Name="PerformanceSectionPanel">
                         <Grid>
                             <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="146"/>
+                                <ColumnDefinition x:Name="ModeRailColumn" Width="146"/>
                                 <ColumnDefinition Width="*"/>
                             </Grid.ColumnDefinitions>
 
@@ -599,11 +675,24 @@
                                     <StackPanel>
                                         <TextBlock x:Name="RefreshRateLabel" Text="Refresh rate" FontSize="10" TextWrapping="Wrap" Margin="0,0,0,6"
                                                    Foreground="{DynamicResource TextSecondaryBrush}"/>
-                                        <Border x:Name="RefreshRateTrack" Background="{DynamicResource TrackBrush}" CornerRadius="9" HorizontalAlignment="Left">
-                                            <StackPanel x:Name="RefreshRateOptionsPanel" Orientation="Horizontal"/>
+                                        <!-- Equal-width options across the rail, so "144Hz" can't run off the edge -->
+                                        <Border x:Name="RefreshRateTrack" Background="{DynamicResource TrackBrush}" CornerRadius="9">
+                                            <UniformGrid x:Name="RefreshRateOptionsPanel" Rows="1"/>
                                         </Border>
                                         <TextBlock x:Name="RefreshRateStatusText" TextWrapping="Wrap" FontSize="10" Margin="0,6,0,0"
                                                    Foreground="{DynamicResource TextSecondaryBrush}" Visibility="Collapsed"/>
+                                    </StackPanel>
+                                </Border>
+
+                                <!-- Battery time per mode, learned while on battery -->
+                                <Border x:Name="BatteryTimeCard" Style="{StaticResource Card}" Padding="10" Margin="0,0,0,8"
+                                        Visibility="Collapsed">
+                                    <StackPanel>
+                                        <TextBlock Text="Battery time" FontSize="10" Margin="0,0,0,6"
+                                                   Foreground="{DynamicResource TextSecondaryBrush}"/>
+                                        <Grid x:Name="BatteryTimeGrid"/>
+                                        <TextBlock x:Name="BatteryTimeHintText" FontSize="10" Margin="0,6,0,0" TextWrapping="Wrap"
+                                                   Foreground="{DynamicResource TextSecondaryBrush}"/>
                                     </StackPanel>
                                 </Border>
                             </StackPanel>
@@ -622,7 +711,7 @@
                                                 <ColumnDefinition Width="*"/>
                                             </Grid.ColumnDefinitions>
 
-                                            <Viewbox Grid.Column="0" Width="180">
+                                            <Viewbox Grid.Column="0" Width="165">
                                                 <Canvas Width="120" Height="104">
                                                     <Path Data="M14,76 A46,46 0 0 1 106,76" Stroke="{DynamicResource TrackBrush}"
                                                           StrokeThickness="11" StrokeStartLineCap="Round" StrokeEndLineCap="Round"/>
@@ -639,7 +728,7 @@
                                                 </Canvas>
                                             </Viewbox>
 
-                                            <Viewbox Grid.Column="1" Width="180" Margin="16,0,0,0">
+                                            <Viewbox Grid.Column="1" Width="165" Margin="16,0,0,0">
                                                 <Canvas Width="120" Height="104" x:Name="GpuTempPanel"
                                                         ToolTip="Not available — no NVIDIA GPU detected (reads via nvidia-smi).">
                                                     <Path Data="M14,76 A46,46 0 0 1 106,76" Stroke="{DynamicResource TrackBrush}"
@@ -657,18 +746,20 @@
                                                 </Canvas>
                                             </Viewbox>
 
+                                            <!-- A size up from the old 11 px: beside dials this big, the readings
+                                                 looked like footnotes. -->
                                             <StackPanel Grid.Column="2" VerticalAlignment="Center" Margin="28,0,0,0">
                                                 <StackPanel Orientation="Horizontal">
-                                                    <TextBlock Text="RAM " FontSize="11" Foreground="{DynamicResource TextSecondaryBrush}"/>
-                                                    <TextBlock x:Name="RamText" Text="--%" FontSize="11" Foreground="{DynamicResource TextPrimaryBrush}"/>
+                                                    <TextBlock Text="RAM " FontSize="13" Foreground="{DynamicResource TextSecondaryBrush}"/>
+                                                    <TextBlock x:Name="RamText" Text="--%" FontSize="13" FontWeight="SemiBold" Foreground="{DynamicResource TextPrimaryBrush}"/>
                                                 </StackPanel>
-                                                <TextBlock x:Name="RamDetailText" Text="" FontSize="11" Margin="0,4,0,0" TextWrapping="Wrap"
+                                                <TextBlock x:Name="RamDetailText" Text="" FontSize="12.5" Margin="0,5,0,0" TextWrapping="Wrap"
                                                            Foreground="{DynamicResource TextSecondaryBrush}"/>
-                                                <TextBlock x:Name="BatteryStatusText" Text="Battery --" FontSize="11" Margin="0,4,0,0" TextWrapping="Wrap"
+                                                <TextBlock x:Name="BatteryStatusText" Text="Battery --" FontSize="12.5" Margin="0,5,0,0" TextWrapping="Wrap"
                                                            Foreground="{DynamicResource TextSecondaryBrush}"/>
-                                                <TextBlock x:Name="GpuDetailText" Text="" FontSize="11" Margin="0,10,0,0" TextWrapping="Wrap"
+                                                <TextBlock x:Name="GpuDetailText" Text="" FontSize="12.5" Margin="0,12,0,0" TextWrapping="Wrap"
                                                            Foreground="{DynamicResource TextSecondaryBrush}" Visibility="Collapsed"/>
-                                                <TextBlock x:Name="IntelGpuDetailText" Text="" FontSize="11" Margin="0,4,0,0" TextWrapping="Wrap"
+                                                <TextBlock x:Name="IntelGpuDetailText" Text="" FontSize="12.5" Margin="0,5,0,0" TextWrapping="Wrap"
                                                            Foreground="{DynamicResource TextSecondaryBrush}" Visibility="Collapsed"/>
                                             </StackPanel>
                                         </Grid>
@@ -763,6 +854,10 @@
                                               Margin="0,12,0,0" HorizontalAlignment="Left" MinWidth="320"
                                               Checked="TuneWifiCheckBox_Changed" Unchecked="TuneWifiCheckBox_Changed"
                                               ToolTip="While any game in this list runs, stops Windows scanning for other Wi-Fi networks in the background — the usual cause of lag spikes that repeat about once a minute."/>
+                                    <CheckBox x:Name="AutoAddGamesCheckBox" Content="Add games as you play them" Style="{StaticResource GlowToggle}"
+                                              Margin="0,10,0,0" HorizontalAlignment="Left" MinWidth="320"
+                                              Checked="AutoAddGamesCheckBox_Changed" Unchecked="AutoAddGamesCheckBox_Changed"
+                                              ToolTip="When a game starts from a Steam, Epic, Xbox, GOG or Battle.net library and isn't in this list yet, it's added with nothing switched on."/>
                                 </StackPanel>
                                 <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center" Margin="16,0,0,0">
                                     <Button x:Name="BrowseForGameButton" Content="Add game..." Style="{StaticResource SecondaryButton}"
@@ -786,8 +881,35 @@
                 <!-- ===================== Drivers tab ===================== -->
                 <StackPanel x:Name="DriversTabPanel" Visibility="Collapsed">
 
-                    <!-- Summary: what was found, when, and the check button -->
-                    <Border Style="{StaticResource Card}">
+                    <!-- Before a check, while checking, or with nothing to install: one clear action in the
+                         middle instead of two buttons in the corner of an empty page -->
+                    <Border x:Name="UpdatesEmptyState" Style="{StaticResource Card}" Padding="32,44">
+                        <StackPanel HorizontalAlignment="Center" MaxWidth="540">
+                            <Border Width="56" Height="56" CornerRadius="28" HorizontalAlignment="Center"
+                                    Background="{DynamicResource GlowFillBrush}">
+                                <Path Data="M12 3v12 M7 10l5 5 5-5 M5 21h14" Width="22" Height="22" Stretch="Uniform"
+                                      Stroke="{DynamicResource AccentBrush}" StrokeThickness="2"
+                                      StrokeStartLineCap="Round" StrokeEndLineCap="Round" StrokeLineJoin="Round"/>
+                            </Border>
+                            <TextBlock x:Name="EmptyTitleText" Text="Driver &amp; BIOS updates" FontSize="18" FontWeight="SemiBold"
+                                       HorizontalAlignment="Center" TextAlignment="Center" Margin="0,16,0,6"
+                                       Foreground="{DynamicResource TextPrimaryBrush}"/>
+                            <TextBlock x:Name="EmptyStatusText" FontSize="12" TextWrapping="Wrap" TextAlignment="Center" LineHeight="19"
+                                       Foreground="{DynamicResource TextSecondaryBrush}"
+                                       Text="Looks up real updates for this exact laptop from HP, NVIDIA and Intel — nothing is installed automatically."/>
+                            <Button x:Name="EmptyCheckButton" Content="Check for updates" Style="{StaticResource PrimaryButton}"
+                                    Padding="30,11" Margin="0,20,0,0" HorizontalAlignment="Center" Click="CheckUpdatesButton_Click"/>
+                            <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" Margin="0,14,0,0">
+                                <TextBlock x:Name="EmptyLastCheckedText" FontSize="11" VerticalAlignment="Center" Margin="0,0,14,0"
+                                           Foreground="{DynamicResource TextSecondaryBrush}" Visibility="Collapsed"/>
+                                <Button Content="Open downloads folder" Style="{StaticResource LinkButton}"
+                                        Click="OpenDownloadsFolderButton_Click"/>
+                            </StackPanel>
+                        </StackPanel>
+                    </Border>
+
+                    <!-- With updates listed: what was found, when, and the buttons to check again -->
+                    <Border x:Name="UpdatesHeaderCard" Style="{StaticResource Card}" Visibility="Collapsed">
                         <Grid>
                             <Grid.ColumnDefinitions>
                                 <ColumnDefinition Width="*"/>
@@ -839,8 +961,13 @@
                                         <ColumnDefinition Width="Auto"/>
                                     </Grid.ColumnDefinitions>
 
-                                    <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
-                                        <Border CornerRadius="8" Padding="9,6" MinWidth="170" Background="{DynamicResource TrackBrush}">
+                                    <!-- Search takes whatever room is left, so the sort button is never cut off -->
+                                    <Grid VerticalAlignment="Center">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="*" MinWidth="80" MaxWidth="240"/>
+                                            <ColumnDefinition Width="Auto"/>
+                                        </Grid.ColumnDefinitions>
+                                        <Border CornerRadius="8" Padding="9,6" Background="{DynamicResource TrackBrush}">
                                             <Grid>
                                                 <TextBlock x:Name="UpdateSearchHint" Text="Search updates" FontSize="12" IsHitTestVisible="False"
                                                            Foreground="{DynamicResource TextSecondaryBrush}"/>
@@ -848,10 +975,10 @@
                                                          Foreground="{DynamicResource TextPrimaryBrush}" TextChanged="UpdateSearchBox_TextChanged"/>
                                             </Grid>
                                         </Border>
-                                        <Button x:Name="UpdateSortButton" Content="Newest first" Style="{StaticResource SecondaryButton}"
+                                        <Button x:Name="UpdateSortButton" Grid.Column="1" Content="Newest first" Style="{StaticResource SecondaryButton}"
                                                 Padding="12,6" Margin="8,0,0,0" Click="UpdateSortButton_Click"
                                                 ToolTip="Click to change the order"/>
-                                    </StackPanel>
+                                    </Grid>
 
                                     <CheckBox x:Name="SelectAllCheckBox" Grid.Column="1" Content="Select all" Style="{StaticResource ModernCheckBox}"
                                               VerticalAlignment="Center" Margin="12,0,10,0"
@@ -953,8 +1080,25 @@
                         </StackPanel>
                     </Border>
 
-                    <!-- Graphics mode (BIOS graphics switch / MUX) -->
-                    <Border Style="{StaticResource Card}">
+                    <!-- Drive health: temperature and remaining write endurance -->
+                    <Border x:Name="DiskHealthCard" Style="{StaticResource Card}" Visibility="Collapsed">
+                        <StackPanel>
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="Auto"/>
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Text="Drive health" Style="{StaticResource SectionHeader}"/>
+                                <Button x:Name="RefreshDiskHealthButton" Grid.Column="1" Content="Refresh"
+                                        Style="{StaticResource SecondaryButton}" Padding="12,6" VerticalAlignment="Top"
+                                        Click="RefreshDiskHealthButton_Click"/>
+                            </Grid>
+                            <StackPanel x:Name="DiskHealthPanel"/>
+                        </StackPanel>
+                    </Border>
+
+                    <!-- Graphics mode (BIOS graphics switch / MUX); hidden on laptops that don't have one -->
+                    <Border x:Name="GraphicsModeCard" Style="{StaticResource Card}">
                         <StackPanel>
                             <TextBlock Text="Graphics mode" Style="{StaticResource SectionHeader}"/>
                             <TextBlock x:Name="GraphicsModeStatusText" Text="Checking the BIOS…" FontSize="12" TextWrapping="Wrap"
@@ -974,6 +1118,31 @@
                                        Foreground="{DynamicResource TextSecondaryBrush}" Visibility="Collapsed"/>
                             <Button x:Name="RestartNowButton" Content="Restart now" Style="{StaticResource SecondaryButton}"
                                     Padding="16,8" Margin="0,10,0,0" HorizontalAlignment="Left" Visibility="Collapsed"
+                                    Click="RestartNowButton_Click"/>
+                        </StackPanel>
+                    </Border>
+
+                    <!-- BIOS: a few harmless setup options, and a way into the setup screen itself -->
+                    <Border x:Name="BiosSettingsCard" Style="{StaticResource Card}">
+                        <StackPanel>
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="Auto"/>
+                                </Grid.ColumnDefinitions>
+                                <StackPanel VerticalAlignment="Center" Margin="0,0,12,0">
+                                    <TextBlock Text="BIOS settings" Style="{StaticResource SectionHeader}" Margin="0,0,0,4"/>
+                                    <TextBlock x:Name="BiosSettingsStatusText" FontSize="11" TextWrapping="Wrap"
+                                               Foreground="{DynamicResource TextSecondaryBrush}"
+                                               Text="The same options as the BIOS setup screen. Changes are saved to the BIOS and take effect after a restart."/>
+                                </StackPanel>
+                                <Button Grid.Column="1" Content="Restart into BIOS" Style="{StaticResource SecondaryButton}"
+                                        Padding="14,8" VerticalAlignment="Top" Click="RestartIntoBiosButton_Click"
+                                        ToolTip="Restarts straight into the BIOS setup screen"/>
+                            </Grid>
+                            <StackPanel x:Name="BiosSettingsPanel" Margin="0,6,0,0"/>
+                            <Button x:Name="BiosRestartToApplyButton" Content="Restart to apply" Style="{StaticResource PrimaryButton}"
+                                    Padding="16,8" Margin="0,12,0,0" HorizontalAlignment="Left" Visibility="Collapsed"
                                     Click="RestartNowButton_Click"/>
                         </StackPanel>
                     </Border>
@@ -1057,6 +1226,36 @@
 
                             <Border Height="1" Background="{DynamicResource BorderBrush2}" Margin="0,14,0,14"/>
 
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="Auto"/>
+                                </Grid.ColumnDefinitions>
+                                <StackPanel VerticalAlignment="Center" Margin="0,0,12,0">
+                                    <TextBlock Text="Interface size" FontSize="13" Foreground="{DynamicResource TextPrimaryBrush}"/>
+                                    <TextBlock x:Name="InterfaceSizeHintText" FontSize="11" Margin="0,3,0,0" TextWrapping="Wrap"
+                                               Foreground="{DynamicResource TextSecondaryBrush}"/>
+                                </StackPanel>
+                                <Border x:Name="InterfaceSizeHost" Grid.Column="1" VerticalAlignment="Center"/>
+                            </Grid>
+
+                            <Border Height="1" Background="{DynamicResource BorderBrush2}" Margin="0,14,0,14"/>
+
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="Auto"/>
+                                </Grid.ColumnDefinitions>
+                                <StackPanel VerticalAlignment="Center" Margin="0,0,12,0">
+                                    <TextBlock Text="Language" FontSize="13" Foreground="{DynamicResource TextPrimaryBrush}"/>
+                                    <TextBlock Text="Arabic uses a right-to-left layout. Applies after a restart." FontSize="11" Margin="0,3,0,0"
+                                               TextWrapping="Wrap" Foreground="{DynamicResource TextSecondaryBrush}"/>
+                                </StackPanel>
+                                <Border x:Name="LanguageHost" Grid.Column="1" VerticalAlignment="Center"/>
+                            </Grid>
+
+                            <Border Height="1" Background="{DynamicResource BorderBrush2}" Margin="0,14,0,14"/>
+
                             <CheckBox x:Name="AlwaysOnTopCheckBox" Content="Always on top" Style="{StaticResource GlowToggle}"
                                       Checked="AlwaysOnTopCheckBox_Changed" Unchecked="AlwaysOnTopCheckBox_Changed"/>
                         </StackPanel>
@@ -1133,6 +1332,14 @@
 
                             <Border Height="1" Background="{DynamicResource BorderBrush2}" Margin="0,14,0,14"/>
 
+                            <CheckBox x:Name="WeeklyDriverCheckCheckBox" Content="Check for driver updates every week"
+                                      Style="{StaticResource GlowToggle}"
+                                      Checked="WeeklyDriverCheckCheckBox_Changed" Unchecked="WeeklyDriverCheckCheckBox_Changed"/>
+                            <TextBlock Text="Checks HP, NVIDIA and Intel in the background and tells you when something new turns up. Nothing is installed without you."
+                                       FontSize="11" Margin="0,3,0,0" TextWrapping="Wrap" Foreground="{DynamicResource TextSecondaryBrush}"/>
+
+                            <Border Height="1" Background="{DynamicResource BorderBrush2}" Margin="0,14,0,14"/>
+
                             <CheckBox x:Name="ExitOnCloseCheckBox" Content="Exit instead of minimizing to tray when closed"
                                       Style="{StaticResource GlowToggle}"
                                       Checked="ExitOnCloseCheckBox_Changed" Unchecked="ExitOnCloseCheckBox_Changed"/>
@@ -1174,9 +1381,31 @@
                             </Grid>
                             <TextBlock x:Name="AppUpdateStatusText" TextWrapping="Wrap" FontSize="11" Margin="0,8,0,0"
                                        Foreground="{DynamicResource TextSecondaryBrush}" Visibility="Collapsed"/>
-                            <Button x:Name="OpenReleasePageButton" Content="View release" Style="{StaticResource SecondaryButton}"
-                                    Padding="12,6" Margin="0,8,0,0" HorizontalAlignment="Left"
-                                    Visibility="Collapsed" Click="OpenReleasePageButton_Click"/>
+                            <StackPanel Orientation="Horizontal" Margin="0,8,0,0">
+                                <Button x:Name="InstallAppUpdateButton" Content="Update now" Style="{StaticResource PrimaryButton}"
+                                        Padding="14,6" Margin="0,0,8,0" Visibility="Collapsed"
+                                        ToolTip="Downloads the new build and puts it in place of this one"
+                                        Click="InstallAppUpdateButton_Click"/>
+                                <Button x:Name="OpenReleasePageButton" Content="View release" Style="{StaticResource SecondaryButton}"
+                                        Padding="12,6" Visibility="Collapsed" Click="OpenReleasePageButton_Click"/>
+                            </StackPanel>
+
+                            <Border Height="1" Background="{DynamicResource BorderBrush2}" Margin="0,14,0,14"/>
+
+                            <!-- Installed in Program Files and listed in Windows' installed apps, or not -->
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="Auto"/>
+                                </Grid.ColumnDefinitions>
+                                <StackPanel Margin="0,0,10,0">
+                                    <TextBlock Text="Installation" FontSize="13" FontWeight="SemiBold" Foreground="{DynamicResource TextPrimaryBrush}"/>
+                                    <TextBlock x:Name="InstallStatusText" TextWrapping="Wrap" FontSize="11" Margin="0,2,0,0"
+                                               Foreground="{DynamicResource TextSecondaryBrush}"/>
+                                </StackPanel>
+                                <Button x:Name="InstallButton" Grid.Column="1" Content="Install" Style="{StaticResource SecondaryButton}"
+                                        Padding="14,8" VerticalAlignment="Center" Click="InstallButton_Click"/>
+                            </Grid>
 
                             <Border Height="1" Background="{DynamicResource BorderBrush2}" Margin="0,14,0,14"/>
 
@@ -1224,4 +1453,5 @@
                    Text="Closing this window minimizes to the tray. Use the tray icon to exit."/>
         </Grid>
     </Grid>
+    </Border>
 </Window>

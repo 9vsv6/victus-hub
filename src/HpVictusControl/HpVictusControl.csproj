@@ -13,7 +13,11 @@
     <RootNamespace>HpVictusControl</RootNamespace>
     <ApplicationIcon>app.ico</ApplicationIcon>
     <ApplicationHighDpiMode>PerMonitorV2</ApplicationHighDpiMode>
-    <Version>1.4.0</Version>
+    <Version>1.5.0</Version>
+    <!-- A single-file publish otherwise leaves WPF's native DLLs (PresentationNative_cor3.dll and
+         friends) beside the exe; copied on its own (e.g. into Program Files) it then crashes at
+         start with DllNotFoundException. Bundled, the exe works wherever it's put. -->
+    <IncludeNativeLibrariesForSelfExtract>true</IncludeNativeLibrariesForSelfExtract>
   </PropertyGroup>
 
   <ItemGroup>
@@ -21,4 +25,8 @@
     <PackageReference Include="System.Diagnostics.PerformanceCounter" Version="9.0.0" />
   </ItemGroup>
 
+  <ItemGroup>
+    <!-- Alexandria (SIL Open Font License, see Fonts\OFL.txt) for the Arabic interface -->
+    <Resource Include="Fonts\*.ttf" />
+  </ItemGroup>
 </Project>

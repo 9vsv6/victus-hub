@@ -15,17 +15,30 @@ public partial class App : System.Windows.Application {
     // clobbering the other's changes. This keeps the app to a single running instance.
     private const string MutexName = "HpVictusControl-SingleInstance-9F3C2B1A";
     private const string ShowEventName = "HpVictusControl-ShowRequest-9F3C2B1A";
+    // Set by an uninstall so a running copy closes before its files are removed.
+    private const string ExitEventName = "HpVictusControl-ExitRequest-9F3C2B1A";
 
     private Mutex? _singleInstanceMutex;
     private EventWaitHandle? _showEvent;
+    private EventWaitHandle? _exitEvent;
 
     protected override async void OnStartup(StartupEventArgs e) {
         base.OnStartup(e);
+        // First, so even a failure while starting up (like a missing DLL at sign-in) leaves a report.
+        CrashLog.Initialize();
+        // Before anything is built: dialogs, the window and its tray menu all read the language as they're created.
+        Loc.Use(AppSettings.Load().Language);
 
         // The manifest doesn't demand admin, because Windows won't auto-start such apps at sign-in.
         // A normal-user launch hands off to an elevated copy and exits.
         if (!IsElevated()) {
             HandOffToElevatedInstance(e.Args);
+            Shutdown();
+            return;
+        }
+
+        if (e.Args.Contains(Installer.UninstallArgument)) {
+            RunUninstall();
             Shutdown();
             return;
         }
@@ -50,8 +63,10 @@ public partial class App : System.Windows.Application {
         }
 
         _showEvent = new EventWaitHandle(false, EventResetMode.AutoReset, ShowEventName);
+        _exitEvent = new EventWaitHandle(false, EventResetMode.AutoReset, ExitEventName);
 
         DispatcherUnhandledException += (_, args) => {
+            CrashLog.Write(args.Exception, fatal: false);
             MessageBox.Show(
                 $"Unexpected error: {args.Exception.Message}",
                 "HP Victus Control",
@@ -83,6 +98,11 @@ public partial class App : System.Windows.Application {
         }) { IsBackground = true };
         watcherThread.Start();
 
+        var exitWatcher = new Thread(() => {
+            if (_exitEvent.WaitOne()) Dispatcher.Invoke(window.ExitForUninstall);
+        }) { IsBackground = true };
+        exitWatcher.Start();
+
         if (startMinimized) {
             window.WindowState = WindowState.Minimized;
             window.ShowInTaskbar = false;
@@ -103,8 +123,8 @@ public partial class App : System.Windows.Application {
         if (args.Contains(StartupManager.RunEntryArgument)) return;
 
         // Brings a running instance forward without a UAC prompt: the copy the task starts signals
-        // that window and exits.
-        if (IsInstanceRunning() && StartupManager.TryRunStartupTask()) return;
+        // that window and exits. Not for an uninstall, which has to reach the elevated copy itself.
+        if (!args.Contains(Installer.UninstallArgument) && IsInstanceRunning() && StartupManager.TryRunStartupTask()) return;
 
         try {
             using Process? elevated = Process.Start(new ProcessStartInfo(Environment.ProcessPath!) {
@@ -115,6 +135,40 @@ public partial class App : System.Windows.Application {
         } catch (Win32Exception) {
             // The UAC prompt was declined.
         }
+    }
+
+    // Run from Settings → Apps → Installed apps → Uninstall (and from the app's own Uninstall button,
+    // which relaunches with this argument): asks, closes a running copy, restores the fans and
+    // power plan, then removes the app.
+    private static void RunUninstall() {
+        MessageBoxResult confirmed = Loc.Message(null,
+            Loc.T("Uninstall HP Victus Control?\n\nThe fans and performance mode go back to the BIOS defaults, and the startup task, shortcut and app files are removed."),
+            "HP Victus Control", MessageBoxButton.YesNo, MessageBoxImage.Question);
+        if (confirmed != MessageBoxResult.Yes) return;
+
+        bool removeSettings = Loc.Message(null,
+            Loc.T("Also delete your settings and game profiles?\n\nKeep them if you might install the app again."),
+            "HP Victus Control", MessageBoxButton.YesNo, MessageBoxImage.Question) == MessageBoxResult.Yes;
+
+        // A running copy holds its files open; ask it to close and wait for it to let go.
+        try {
+            using EventWaitHandle exitRequest = EventWaitHandle.OpenExisting(ExitEventName);
+            exitRequest.Set();
+            using var running = new Mutex(false, MutexName);
+            try {
+                running.WaitOne(TimeSpan.FromSeconds(10));
+            } catch (AbandonedMutexException) {
+                // It exited while holding it — that's the goal.
+            }
+        } catch (WaitHandleCannotBeOpenedException) {
+            // Not running.
+        }
+
+        Installer.RestoreHardwareDefaults();
+        Installer.Uninstall(removeSettings);
+
+        Loc.Message(null, Loc.T("HP Victus Control has been uninstalled."), "HP Victus Control",
+            MessageBoxButton.OK, MessageBoxImage.Information);
     }
 
     private static bool IsInstanceRunning() {

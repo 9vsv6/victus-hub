@@ -24,7 +24,12 @@ public sealed class AppSettings {
 
     public bool DarkTheme { get; set; }
     public bool MatchWindowsTheme { get; set; }
+    // Interface language: "en" or "ar".
+    public string Language { get; set; } = "en";
+    // 0 = scale the interface with the window; otherwise a fixed factor (1.15 = 115%).
+    public double InterfaceScale { get; set; }
     public bool TuneWifiForGames { get; set; }
+    public bool AutoAddGames { get; set; } = true;
     public bool AutoCleanDriverDownloads { get; set; } = true;
     public bool AlwaysOnTop { get; set; }
     public bool AutoPowerSwitch { get; set; }
@@ -38,6 +43,12 @@ public sealed class AppSettings {
     public bool TrayIconPromoted { get; set; }
     public int? SpeakerIdleSecondsBeforeKeepAwake { get; set; }
     public DateTime? LastUpdateCheckUtc { get; set; }
+    public DateTime? LastAppUpdateCheckUtc { get; set; }
+    public bool WeeklyDriverCheck { get; set; } = true;
+    // Asked once whether to install into Program Files; after that it's in Settings → About.
+    public bool InstallOffered { get; set; }
+    // The version whose "What's new" was last dismissed; null = never shown.
+    public string? LastSeenVersion { get; set; }
     public int PerformanceRefreshRateHz { get; set; }
     public int BalancedRefreshRateHz { get; set; } = 60;
     public int CoolRefreshRateHz { get; set; } = 60;
@@ -51,6 +62,8 @@ public sealed class AppSettings {
     public double WindowWidth { get; set; }
     public double WindowHeight { get; set; }
     public List<GameProfile> GameProfiles { get; set; } = new();
+    // Typical battery draw per performance mode ("Balanced" → average mW), learned on battery.
+    public Dictionary<string, ModeDrain> BatteryDrainByMode { get; set; } = new();
 
     private static readonly string FilePath = Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "HP Victus Control", "settings.json");
