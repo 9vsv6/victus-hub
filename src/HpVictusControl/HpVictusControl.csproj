@@ -13,7 +13,7 @@
     <RootNamespace>HpVictusControl</RootNamespace>
     <ApplicationIcon>app.ico</ApplicationIcon>
     <ApplicationHighDpiMode>PerMonitorV2</ApplicationHighDpiMode>
-    <Version>1.5.0</Version>
+    <Version>1.6.0</Version>
     <!-- Shown as the name in Task Manager and the file's properties; the exe keeps its old file name so
          existing installs, the startup task and self-update carry on working. -->
     <Product>Victus Hub</Product>
@@ -32,5 +32,7 @@
   <ItemGroup>
     <!-- Alexandria (SIL Open Font License, see Fonts\OFL.txt) for the Arabic interface -->
     <Resource Include="Fonts\*.ttf" />
+    <!-- Also embedded as a resource so the tray can load its 16/20/24 px frame directly -->
+    <Resource Include="app.ico" />
   </ItemGroup>
 </Project>

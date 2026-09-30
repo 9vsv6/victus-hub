@@ -15,6 +15,17 @@ public static class Changelog {
 
     // Newest first.
     public static readonly Release[] Releases = {
+        new(new Version(1, 6, 0), new Change[] {
+            new(Kind.Gpu, "CPU power", "Raise the CPU's sustained power limit in Performance mode, with a heat safety net"),
+            new(Kind.Games, "Max GPU performance per game", "Keeps the NVIDIA GPU at full clocks while a chosen game runs"),
+            new(Kind.Gpu, "Performance boosts", "A tuned power plan in Performance mode, standby memory cleared when a game starts, and a 2-minute fan cool-down after gaming"),
+            new(Kind.Games, "Smoother gaming", "Background apps on Efficiency mode, USB and Wi-Fi power saving off on the charger, and a Game Bar recording switch on the Games page"),
+            new(Kind.System, "HP fan software check", "Finds HP's Omen software that can undo fan and mode changes, and switches it off on the System page"),
+            new(Kind.System, "Startup apps", "See what starts with Windows on the System page, and switch any of it off"),
+            new(Kind.Keyboard, "Camera switch", "Turn the webcam off in Windows itself from Settings → Privacy"),
+            new(Kind.Drivers, "Restore point before updates", "An option on the Drivers page to make a Windows restore point before installing"),
+            new(Kind.Fix, "Easier navigation", "The side buttons can be clicked anywhere, the app opens on the Performance page, and it has a new icon"),
+        }),
         new(new Version(1, 5, 0), new Change[] {
             new(Kind.Theme, "Linen themes", "Linen light and dark themes, easier on the eyes over long sessions"),
             new(Kind.Language, "Arabic interface", "Arabic interface with a right-to-left layout (Settings → Language)"),

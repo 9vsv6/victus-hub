@@ -55,6 +55,16 @@ public sealed class TrayService : IDisposable {
     }
 
     private static Icon LoadAppIcon() {
+        // The .ico's own small frame, at the size the notification area draws: the exe's associated
+        // icon is the 32 px one, which Windows shrinks and blurs.
+        try {
+            var stream = System.Windows.Application.GetResourceStream(new Uri("pack://application:,,,/app.ico"))?.Stream;
+            if (stream != null) {
+                using (stream) return new Icon(stream, SystemInformation.SmallIconSize);
+            }
+        } catch {
+            // Fall back to the exe's icon below.
+        }
         try {
             string? exePath = Environment.ProcessPath;
             if (!string.IsNullOrEmpty(exePath)) {

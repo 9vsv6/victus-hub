@@ -544,6 +544,120 @@ public static partial class Loc {
         ["Turn it off after no input for"] = "إطفاؤها بعد عدم الاستخدام لمدة",
         ["{0}, Cool while idle"] = "{0}، تبريد أثناء الخمول",
         ["The download doesn't match the release's checksum, so it wasn't used."] = "الملف المحمّل لا يطابق checksum الإصدار، لذلك لم يُستخدم.",
+        // ----- CPU power, GPU performance, restore points, startup apps, camera -----
+        ["CPU power"] = "طاقة CPU",
+        ["How much power the CPU may keep drawing under long loads (PL1) in Performance mode. Higher holds clock speeds up longer, and runs hotter."] =
+            "مقدار الطاقة التي يستطيع المعالج سحبها باستمرار تحت الحمل الطويل (PL1) في وضع الأداء. القيمة الأعلى تحافظ على السرعة لمدة أطول، مع حرارة أعلى.",
+        ["Using the laptop's own limit for each mode."] = "يُستخدم حد الجهاز الافتراضي لكل وضع.",
+        ["{0} W is used in Performance mode."] = "يُستخدم {0} واط في وضع الأداء.",
+        ["{0} W applied. If the CPU stays at {1}°C, it's lowered to {2} W until the next mode change."] =
+            "تم تطبيق {0} واط. إذا بقي المعالج عند {1} درجة، يُخفَّض إلى {2} واط حتى تغيير الوضع التالي.",
+        ["The CPU stayed at {0}°C, so its limit was lowered to {1} W until the next mode change."] =
+            "بقي المعالج عند {0} درجة، فخُفّض حده إلى {1} واط حتى تغيير الوضع التالي.",
+        ["CPU at {0}°C: power limit lowered to {1} W"] = "المعالج عند {0} درجة: خُفّض حد الطاقة إلى {1} واط",
+        ["Max GPU performance"] = "أقصى أداء لكرت الشاشة",
+        ["Keeps the NVIDIA GPU at full clocks while this game runs, for steadier frame times. Stored in the NVIDIA driver, the same as Control Panel's \"Prefer maximum performance\". Uses more power."] =
+            "يبقي كرت NVIDIA على أعلى سرعة أثناء تشغيل هذه اللعبة لإطارات أكثر ثباتًا. يُحفظ في تعريف NVIDIA مثل خيار \"Prefer maximum performance\" في لوحة التحكم. يستهلك طاقة أكثر.",
+        ["The NVIDIA driver didn't accept the change."] = "لم يقبل تعريف NVIDIA هذا التغيير.",
+        ["Create a restore point before installing"] = "إنشاء نقطة استعادة قبل التثبيت",
+        ["Makes a Windows restore point first, so a driver or BIOS update that causes problems can be undone from System Restore. Windows makes at most one a day."] =
+            "ينشئ نقطة استعادة في Windows أولًا، ليمكن التراجع عن أي تحديث تعريف أو BIOS يسبب مشاكل من استعادة النظام. ينشئ Windows نقطة واحدة يوميًا كحد أقصى.",
+        ["Creating a restore point… this can take a minute."] = "جارٍ إنشاء نقطة استعادة… قد يستغرق ذلك دقيقة.",
+        ["Restore point created."] = "تم إنشاء نقطة الاستعادة.",
+        ["Windows skipped the restore point: it makes at most one a day."] = "تخطّى Windows نقطة الاستعادة: ينشئ نقطة واحدة يوميًا كحد أقصى.",
+        ["Windows skipped the restore point: it makes at most one a day, and the latest is from {0}."] =
+            "تخطّى Windows نقطة الاستعادة: ينشئ نقطة واحدة يوميًا كحد أقصى، وآخر نقطة من {0}.",
+        ["Windows couldn't create a restore point ({0}). System Protection may be off for drive C: (Control Panel → System → System protection).\n\nInstall anyway?"] =
+            "تعذّر على Windows إنشاء نقطة استعادة ({0}). قد تكون حماية النظام متوقفة للقرص C: (لوحة التحكم ← النظام ← حماية النظام).\n\nهل تريد التثبيت على أي حال؟",
+        ["Startup apps"] = "تطبيقات بدء التشغيل",
+        ["Programs that open when you sign in. Fewer means a faster start and less running in the background. Changes apply at the next sign-in."] =
+            "البرامج التي تفتح عند تسجيل الدخول. كلما قلّت كان التشغيل أسرع وقلّ ما يعمل في الخلفية. تُطبَّق التغييرات عند تسجيل الدخول التالي.",
+        ["Nothing else starts with Windows."] = "لا شيء آخر يعمل مع بدء Windows.",
+        ["Current user"] = "المستخدم الحالي",
+        ["All users"] = "كل المستخدمين",
+        ["Startup folder"] = "مجلد بدء التشغيل",
+        ["Startup folder (all users)"] = "مجلد بدء التشغيل (كل المستخدمين)",
+        ["Couldn't change {0}: {1}"] = "تعذّر تغيير {0}: {1}",
+        ["Privacy"] = "الخصوصية",
+        ["Camera"] = "الكاميرا",
+        ["Off switches the webcam off in Windows itself, the same as disabling it in Device Manager: no app or browser can use it until you turn it back on. Stays off after a restart."] =
+            "الإيقاف يعطّل الكاميرا في Windows نفسه، مثل تعطيلها من إدارة الأجهزة: لا يستطيع أي تطبيق أو متصفح استخدامها حتى تعيد تشغيلها. تبقى متوقفة بعد إعادة التشغيل.",
+        ["No camera found on this PC."] = "لم يُعثر على كاميرا في هذا الجهاز.",
+        ["{0}: {1}"] = "{0}: {1}",
+        ["on"] = "تعمل",
+        ["off"] = "متوقفة",
+        ["Turning the camera on…"] = "جارٍ تشغيل الكاميرا…",
+        ["Turning the camera off…"] = "جارٍ إيقاف الكاميرا…",
+        ["Windows didn't change the camera: {0}"] = "لم يغيّر Windows حالة الكاميرا: {0}",
+        ["Raise the CPU's sustained power limit in Performance mode, with a heat safety net"] = "رفع حد طاقة المعالج المستمر في وضع الأداء، مع حماية من الحرارة",
+        ["Max GPU performance per game"] = "أقصى أداء لكرت الشاشة لكل لعبة",
+        ["Keeps the NVIDIA GPU at full clocks while a chosen game runs"] = "يبقي كرت NVIDIA على أعلى سرعة أثناء تشغيل لعبة تختارها",
+        ["See what starts with Windows on the System page, and switch any of it off"] = "اعرض ما يعمل مع بدء Windows في صفحة النظام، وأوقف ما تريد منه",
+        ["Camera switch"] = "مفتاح الكاميرا",
+        ["Turn the webcam off in Windows itself from Settings → Privacy"] = "أوقف الكاميرا في Windows نفسه من الإعدادات ← الخصوصية",
+        ["Restore point before updates"] = "نقطة استعادة قبل التحديثات",
+        ["An option on the Drivers page to make a Windows restore point before installing"] = "خيار في صفحة التعريفات لإنشاء نقطة استعادة قبل التثبيت",
+        ["Easier navigation"] = "تنقّل أسهل",
+        ["The side buttons can be clicked anywhere, the app opens on the Performance page, and it has a new icon"] = "أزرار الشريط الجانبي تُضغط من أي مكان، ويفتح التطبيق على صفحة الأداء، مع أيقونة جديدة",
+
+        // ----- Games page layout -----
+        ["Game options"] = "خيارات اللعب",
+        ["During play"] = "أثناء اللعب",
+        ["After play"] = "بعد اللعب",
+        ["Hover over an option to see what it does."] = "مرّر المؤشر فوق أي خيار لمعرفة ما يفعله.",
+        ["Click to show or hide this game's settings"] = "اضغط لإظهار إعدادات هذه اللعبة أو إخفائها",
+        ["NVIDIA GPU"] = "كرت NVIDIA",
+
+        // ----- Power plan, standby memory, cool-down -----
+        ["Tuned power plan in Performance mode"] = "خطة طاقة محسّنة في وضع الأداء",
+        ["Faster CPU boost and no parked cores while plugged in, in Performance mode only. Turning it off puts back the values it changed."] =
+            "تسريع أعلى للمعالج ودون إيقاف الأنوية أثناء الشحن، في وضع الأداء فقط. الإيقاف يعيد القيم التي غيّرها.",
+        ["Already tuned: nothing needed changing."] = "محسّنة مسبقًا: لم يلزم أي تغيير.",
+        ["Changed: {0}"] = "تم التغيير: {0}",
+        ["Put back the way it was."] = "أُعيدت كما كانت.",
+        ["Clear standby memory when a game starts"] = "تفريغ الذاكرة الاحتياطية عند بدء لعبة",
+        ["Empties the file data Windows keeps cached in memory, the same as RAMMap's 'Empty Standby List'. Helps games that stutter when memory is nearly full; the first loads right after may be a little slower."] =
+            "يفرّغ بيانات الملفات التي يحتفظ بها Windows في الذاكرة، مثل خيار 'Empty Standby List' في RAMMap. يساعد الألعاب التي تتقطع عند امتلاء الذاكرة؛ قد يكون التحميل الأول بعدها أبطأ قليلًا.",
+        ["Cool down for 2 minutes after a game closes"] = "تبريد لمدة دقيقتين بعد إغلاق اللعبة",
+        ["Runs the fans at full speed for two minutes after a game in this list closes, so the laptop isn't left hot. Starting another game or switching max fan yourself ends it early."] =
+            "يشغّل المراوح بأقصى سرعة لمدة دقيقتين بعد إغلاق لعبة من القائمة حتى لا يبقى الجهاز ساخنًا. يتوقف مبكرًا عند تشغيل لعبة أخرى أو تغيير المروحة القصوى يدويًا.",
+        [", fans on full for 2 minutes to cool down"] = "، والمراوح بأقصى سرعة لمدة دقيقتين للتبريد",
+        ["standby memory cleared"] = "تفريغ الذاكرة الاحتياطية",
+        ["Performance boosts"] = "تحسينات للأداء",
+        ["A tuned power plan in Performance mode, standby memory cleared when a game starts, and a 2-minute fan cool-down after gaming"] =
+            "خطة طاقة محسّنة في وضع الأداء، وتفريغ الذاكرة الاحتياطية عند بدء اللعبة، وتبريد لمدة دقيقتين بعد اللعب",
+
+        // ----- HP fan software -----
+        ["HP fan software"] = "برامج المراوح من HP",
+        ["HP's own fan and performance software talks to the same BIOS controls as this app, and can undo its fan and mode changes. Turning it off stops it and keeps it from starting; nothing is deleted."] =
+            "برامج HP الخاصة بالمراوح والأداء تتحكم في نفس إعدادات الـ BIOS التي يستخدمها هذا التطبيق، وقد تلغي تغييراته على المراوح والأوضاع. الإيقاف يوقفها ويمنع تشغيلها تلقائيًا، دون حذف أي شيء.",
+        ["Switched off by Victus Hub, so it can't change the fans or mode. Turn it back on if you want to use Omen Gaming Hub again."] =
+            "أوقفها Victus Hub، فلا تستطيع تغيير المراوح أو الوضع. أعد تشغيلها إذا أردت استخدام Omen Gaming Hub مجددًا.",
+        ["{0} ({1})"] = "{0} ({1})",
+        ["running"] = "يعمل",
+        ["not running"] = "متوقف",
+        ["Turn off"] = "إيقاف",
+        ["Turn back on"] = "إعادة التشغيل",
+        ["Some of it didn't change: {0}"] = "لم يتغير بعضها: {0}",
+        ["HP fan software check"] = "فحص برامج المراوح من HP",
+        ["Finds HP's Omen software that can undo fan and mode changes, and switches it off on the System page"] =
+            "يكتشف برامج Omen من HP التي قد تلغي تغييرات المراوح والأوضاع، ويوقفها من صفحة النظام",
+
+        // ----- Smoother gaming -----
+        ["Background apps on Efficiency mode while playing"] = "تطبيقات الخلفية على وضع الكفاءة أثناء اللعب",
+        ["While any game in this list runs, browsers, game launchers and chat apps (not Discord) get low priority and Windows' Efficiency mode, so they stay off the game's CPU cores. Put back when the game closes."] =
+            "أثناء تشغيل أي لعبة من القائمة، تحصل المتصفحات ومشغّلات الألعاب وتطبيقات الدردشة (عدا Discord) على أولوية منخفضة ووضع الكفاءة في Windows، فتبتعد عن أنوية المعالج التي تستخدمها اللعبة. تعود كما كانت عند إغلاق اللعبة.",
+        ["Smoother input and network on the charger"] = "إدخال وشبكة أكثر سلاسة عند الشحن",
+        ["While plugged in: USB power saving off (fixes a mouse that stutters or briefly freezes) and Wi-Fi at full power (no power-saving ping spikes). On battery nothing changes."] =
+            "أثناء توصيل الشاحن: إيقاف توفير طاقة USB (يصلح تقطّع الفأرة أو تجمّدها لحظيًا) وتشغيل Wi-Fi بكامل طاقته (دون ارتفاعات ping بسبب توفير الطاقة). لا يتغير شيء على البطارية.",
+        ["Xbox Game Bar background recording"] = "التسجيل في الخلفية لـ Xbox Game Bar",
+        ["Game Bar can keep recording the last minutes of gameplay in the background, which costs some FPS. Off stops that and turns off Game Bar clips; Game Bar itself still opens with Win+G."] =
+            "يمكن لـ Game Bar أن يسجّل آخر دقائق اللعب في الخلفية، وهذا يقلل بعض الإطارات. الإيقاف يوقف ذلك ويعطّل مقاطع Game Bar، ويبقى Game Bar نفسه يفتح بـ Win+G.",
+        ["Couldn't change Game Bar recording: {0}"] = "تعذّر تغيير تسجيل Game Bar: {0}",
+        ["Smoother gaming"] = "لعب أكثر سلاسة",
+        ["Background apps on Efficiency mode, USB and Wi-Fi power saving off on the charger, and a Game Bar recording switch on the Games page"] =
+            "تطبيقات الخلفية على وضع الكفاءة، وإيقاف توفير طاقة USB وWi-Fi عند الشحن، ومفتاح لتسجيل Game Bar في صفحة الألعاب",
+
         // ----- Settings sections -----
         ["General"] = "عام",
         ["Startup"] = "التشغيل",

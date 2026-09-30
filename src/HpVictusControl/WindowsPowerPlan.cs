@@ -54,6 +54,81 @@ public static class WindowsPowerPlan {
         return true;
     }
 
+    // Plugged-in ("AC") values in all three schemes the modes use. On battery nothing changes.
+    // Windows' own defaults are USB selective suspend on (1) and Wi-Fi at Maximum Performance (0);
+    // on this machine Wi-Fi was already 0 in every scheme, the USB one was the real change.
+    private const string UsbSubgroup = "2a737441-1930-4402-8d77-b2bebba308a3";
+    private const string UsbSelectiveSuspend = "48e6b7a6-50f5-4782-a5d4-53bb8f07e226";
+    private const string WirelessSubgroup = "19cbb8fa-5279-450e-9fac-8a3d5fedd0c1";
+    private const string WirelessPowerSaving = "12bbebe6-58d6-4636-95bb-3217ef867c1a";
+
+    /// <summary>
+    /// On: USB selective suspend off and Wi-Fi at Maximum Performance while plugged in. Off: USB
+    /// selective suspend back to Windows' default (on); Wi-Fi's plugged-in default already is full power.
+    /// </summary>
+    public static void SetPluggedInTweaks(bool on) {
+        foreach (string scheme in new[] { BalancedGuid, HighPerformanceGuid, PowerSaverGuid }) {
+            RunPowercfg($"/setacvalueindex {scheme} {UsbSubgroup} {UsbSelectiveSuspend} {(on ? 0 : 1)}");
+            RunPowercfg($"/setacvalueindex {scheme} {WirelessSubgroup} {WirelessPowerSaving} 0");
+        }
+        // Values written to the active scheme only take effect once it's re-applied.
+        RunPowercfg("/setactive SCHEME_CURRENT");
+    }
+
+    // ----- Performance plan tuning -----
+    // Only the High performance scheme (the one Performance mode uses) and only its plugged-in values.
+    // These settings are hidden from "powercfg /q" on this machine, so they're read and written through
+    // powrprof directly, which doesn't care whether a setting is hidden.
+    private static readonly Guid ProcessorSubgroup = new("54533251-82be-4824-96c1-47b60b740d00");
+
+    private static readonly (string Name, Guid Setting, uint Tuned)[] PerformanceTuning = {
+        ("Processor boost mode", new Guid("be337238-0d82-4146-a960-4f3749d470c7"), 2),          // Aggressive
+        ("Core parking, performance cores", new Guid("0cc5b647-c1df-4637-891a-dec35c318583"), 100), // min cores unparked: all
+        ("Core parking, efficiency cores", new Guid("0cc5b647-c1df-4637-891a-dec35c318584"), 100),
+    };
+
+    [DllImport("powrprof.dll")]
+    private static extern uint PowerReadACValueIndex(IntPtr rootKey, ref Guid scheme, ref Guid subgroup, ref Guid setting, out uint value);
+
+    [DllImport("powrprof.dll")]
+    private static extern uint PowerWriteACValueIndex(IntPtr rootKey, ref Guid scheme, ref Guid subgroup, ref Guid setting, uint value);
+
+    [DllImport("powrprof.dll")]
+    private static extern uint PowerSetActiveScheme(IntPtr rootKey, ref Guid scheme);
+
+    /// <summary>
+    /// Sets faster boost and no core parking in the High performance scheme. Returns what each changed
+    /// setting was before (for <see cref="RestorePerformanceScheme"/>); already-tuned ones aren't listed.
+    /// </summary>
+    public static Dictionary<string, uint> TunePerformanceScheme(out List<string> changed) {
+        var originals = new Dictionary<string, uint>();
+        changed = new List<string>();
+        Guid scheme = Guid.Parse(HighPerformanceGuid), subgroup = ProcessorSubgroup;
+        foreach ((string name, Guid setting, uint tuned) in PerformanceTuning) {
+            Guid id = setting;
+            if (PowerReadACValueIndex(IntPtr.Zero, ref scheme, ref subgroup, ref id, out uint current) != 0 || current == tuned) continue;
+            if (PowerWriteACValueIndex(IntPtr.Zero, ref scheme, ref subgroup, ref id, tuned) != 0) continue;
+            originals[setting.ToString()] = current;
+            changed.Add($"{name}: {current} → {tuned}");
+        }
+        ReapplyIfActive(scheme);
+        return originals;
+    }
+
+    public static void RestorePerformanceScheme(Dictionary<string, uint> originals) {
+        Guid scheme = Guid.Parse(HighPerformanceGuid), subgroup = ProcessorSubgroup;
+        foreach ((string settingText, uint value) in originals) {
+            Guid setting = Guid.Parse(settingText);
+            PowerWriteACValueIndex(IntPtr.Zero, ref scheme, ref subgroup, ref setting, value);
+        }
+        ReapplyIfActive(scheme);
+    }
+
+    // Changed values of the active scheme only take effect once it's set active again.
+    private static void ReapplyIfActive(Guid scheme) {
+        if (GetActiveScheme() == scheme) PowerSetActiveScheme(IntPtr.Zero, ref scheme);
+    }
+
     private static string SchemeForMode(HpFanMode mode) => mode switch {
         HpFanMode.Performance => HighPerformanceGuid,
         HpFanMode.Cool => PowerSaverGuid,

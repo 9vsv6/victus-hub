@@ -35,6 +35,18 @@ tray icon that polls the BIOS every 2 seconds.
   moment you do. It leaves the selected mode, power plan and brightness alone and never kicks in
   during a game from your list
 - Keyboard backlight switch, with an optional timeout that turns it off while the laptop sits idle
+- CPU power: raise the sustained CPU power limit (PL1) in Performance mode, with a safety net that
+  drops it back to 45 W if the CPU sits at 95°C
+- Tuned power plan for Performance mode: faster CPU boost and no parked cores while plugged in;
+  switching it off puts back exactly the values it changed
+- Game options, grouped beside the game list:
+  - During play: Wi-Fi tuning, background apps (browsers, launchers, chat) moved to Windows'
+    Efficiency mode, and standby memory cleared when a game starts
+  - After play: fans on full for 2 minutes to cool down
+  - General: USB and Wi-Fi power saving off on the charger (fixes mouse stutter and ping spikes),
+    and a switch for Xbox Game Bar background recording
+- Max GPU performance per game ("Prefer maximum performance" in the NVIDIA driver profile), and
+  game cards that fold down to a one-line summary
 - Performance mode switch: Balanced / Performance / Cool, with the battery time each mode would
   give from the current charge. The times are learned from how much power each mode actually draws
   on battery
@@ -56,6 +68,12 @@ tray icon that polls the BIOS every 2 seconds.
   - Downloaded installers are cleaned up automatically.
 - System page: laptop details, battery health, drive health (SSD temperature and remaining write
   endurance), BIOS graphics switch (where the model has one), fan test, shader cache cleanup
+- Startup apps on the System page: what starts with Windows, each with a switch (the same flag
+  Task Manager uses, so nothing is deleted)
+- HP fan software check: finds HP's Omen service that can undo fan and mode changes, and switches it
+  off or back on
+- Camera privacy switch (Settings → Privacy) that turns the webcam off in Windows itself
+- Optional Windows restore point before installing a driver or BIOS update
 - BIOS settings without rebooting into setup: battery care, fans always on, action keys, boot menu
   delay, plus Restart into BIOS
 - Checks its own GitHub releases once a day and can download and install a newer build in place,
@@ -104,7 +122,7 @@ reverse-engineered and documented. The main reference is the [OmenMon](https://g
 project, which this app used to learn which BIOS command bytes correspond to which function. The
 BIOS/WMI calls used here are separate from OmenMon and much narrower in scope: no keyboard
 colors, no CPU power tables and no direct Embedded Controller access. The app only uses fan level,
-max fan, performance mode, GPU power (custom TGP and Dynamic Boost), the keyboard backlight's on/off
+max fan, performance mode, the sustained CPU power limit, GPU power (custom TGP and Dynamic Boost), the keyboard backlight's on/off
 switch, and the single BIOS temperature sensor.
 
 **Fan level unit**: the BIOS reports and accepts fan speed as a single byte per fan. Empirically

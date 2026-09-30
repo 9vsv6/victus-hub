@@ -242,6 +242,30 @@ public sealed class HpBiosClient : IDisposable {
         Check(rc);
     }
 
+    // ----- CPU power limits ---------------------------------------------------------------------
+
+    // Command 0x29 takes four limits in watts: PL1 (sustained), PL2 (burst), PL4, and the limit
+    // shared with the GPU. 0xFF leaves that one unchanged. There's no command to read them back.
+    private const byte NoChange = 0xFF;
+
+    /// <summary>
+    /// Whether the BIOS takes CPU power limits. Asked by sending "change nothing" for all four,
+    /// which a BIOS without the command rejects. Never throws.
+    /// </summary>
+    public bool SupportsCpuPowerLimits() {
+        try {
+            return Send(0x29, new[] { NoChange, NoChange, NoChange, NoChange }, 0, out _) == 0;
+        } catch (HpBiosException) {
+            return false;
+        }
+    }
+
+    /// <summary>Sets the sustained CPU power limit (PL1), in watts; the other limits stay as they are.</summary>
+    public void SetCpuSustainedPower(byte watts) {
+        int rc = Send(0x29, new[] { watts, NoChange, NoChange, NoChange }, 0, out _);
+        Check(rc);
+    }
+
     // ----- Keyboard backlight -------------------------------------------------------------------
 
     private const uint CmdKeyboard = 0x20009;

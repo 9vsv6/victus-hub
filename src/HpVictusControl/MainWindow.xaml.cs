@@ -54,9 +54,15 @@ public partial class MainWindow : Window {
         InterfaceSizeHost.Child = BuildInterfaceSizePicker();
         LanguageHost.Child = BuildLanguagePicker();
         TuneWifiCheckBox.IsChecked = _settings.TuneWifiForGames;
+        ThrottleBackgroundCheckBox.IsChecked = _settings.ThrottleBackgroundForGames;        ClearStandbyCheckBox.IsChecked = _settings.ClearStandbyOnGameStart;
+        CoolDownCheckBox.IsChecked = _settings.CoolDownAfterGames;
+        TunedPlanCheckBox.IsChecked = _settings.TunedPerformancePlan;
+        PluggedInTweaksCheckBox.IsChecked = _settings.PluggedInTweaks;
+        GameBarRecordingCheckBox.IsChecked = GameBarRecording.IsEnabled();
         AutoAddGamesCheckBox.IsChecked = _settings.AutoAddGames;
         WeeklyDriverCheckCheckBox.IsChecked = _settings.WeeklyDriverCheck;
         AutoCleanDownloadsCheckBox.IsChecked = _settings.AutoCleanDriverDownloads;
+        RestorePointCheckBox.IsChecked = _settings.RestorePointBeforeUpdates;
         Microsoft.Win32.SystemEvents.UserPreferenceChanged += SystemEvents_UserPreferenceChanged;
         TempAlertCheckBox.IsChecked = _settings.TempAlertsEnabled;
         TempAlertSlider.Value = _settings.TempAlertThreshold;
@@ -421,10 +427,42 @@ public partial class MainWindow : Window {
         var sections = new (RadioButton Nav, FrameworkElement Section)[] {
             (AppearanceNav, AppearanceSection), (LanguageNav, LanguageSection), (SoundNav, SpeakerAwakeCard),
             (StartupNav, StartupSection), (TempAlertsNav, TempAlertsSection),
-            (ShortcutsNav, ShortcutsSection), (AboutNav, AboutSection),
+            (ShortcutsNav, ShortcutsSection), (PrivacyNav, PrivacySection), (AboutNav, AboutSection),
         };
         foreach ((RadioButton nav, FrameworkElement section) in sections)
             section.Visibility = ReferenceEquals(nav, sender) ? Visibility.Visible : Visibility.Collapsed;
+        if (ReferenceEquals(sender, PrivacyNav)) LoadCameraState();
+    }
+
+    // ----- Camera -----
+
+    private bool _syncingCamera;
+
+    // Read each time Privacy opens: Device Manager or another app may have changed it meanwhile.
+    private async void LoadCameraState() {
+        List<CameraDevice> cameras = await Task.Run(CameraSwitch.List);
+        if (cameras.Count == 0) {
+            CameraCheckBox.IsEnabled = false;
+            CameraStatusText.Text = T("No camera found on this PC.");
+            return;
+        }
+        CameraCheckBox.IsEnabled = true;
+        _syncingCamera = true;
+        CameraCheckBox.IsChecked = cameras.Any(camera => camera.Enabled);
+        _syncingCamera = false;
+        CameraStatusText.Text = string.Join("\n", cameras.Select(camera =>
+            F("{0}: {1}", camera.Name, camera.Enabled ? T("on") : T("off"))));
+    }
+
+    private async void CameraCheckBox_Changed(object sender, RoutedEventArgs e) {
+        if (_initializing || _syncingCamera) return;
+        bool enabled = CameraCheckBox.IsChecked == true;
+        CameraCheckBox.IsEnabled = false;
+        CameraStatusText.Text = enabled ? T("Turning the camera on…") : T("Turning the camera off…");
+        string? problem = await Task.Run(() => CameraSwitch.SetEnabled(enabled));
+        LoadCameraState();
+        if (problem != null)
+            Message(this, F("Windows didn't change the camera: {0}", problem), "Victus Hub", MessageBoxButton.OK, MessageBoxImage.Warning);
     }
 
     private void UpdateSectionStatus() {
@@ -802,6 +840,7 @@ public partial class MainWindow : Window {
         }
 
         PopulateRefreshRateOptions();
+        LoadCpuPower();
         LoadGpuPower();
         LoadIdleSettings();
         RenderGameProfilesList();
@@ -827,6 +866,8 @@ public partial class MainWindow : Window {
         if (_settings.AutoFanByTemp) AutoFanCheckBox.IsChecked = true;
         // After Start with Windows has refreshed the Program Files copy.
         Installer.SyncListing();
+        // Re-asserted at each start in case a Windows update reset the power plans.
+        if (_settings.PluggedInTweaks) _ = Task.Run(() => WindowsPowerPlan.SetPluggedInTweaks(true));
     }
 
     private void RefreshStats() {
@@ -870,6 +911,7 @@ public partial class MainWindow : Window {
         UpdateTemperatureGauge(CpuGaugeArc, cpuTempValue);
         UpdateSectionStatus();
         CheckTemperatureAlert("CPU", cpuTempValue, ref _cpuTempAlertActive);
+        GuardCpuPowerLimit(cpuTempValue);
         _lastCpuTempForFan = cpuTempValue;
         ApplyAutoFanCurve();
 
@@ -1113,6 +1155,7 @@ KeepLeftToRight(value);
             _settings.PerformanceMode = mode.ToString();
             _settings.Save();
 
+            ApplyCpuPowerLimit();
             ApplyRefreshRateForMode(mode);
             WindowsPowerPlan.SetForMode(mode);
             ApplyBrightnessForMode(mode, previousMode);
@@ -1279,6 +1322,83 @@ KeepLeftToRight(value);
         bool onAc = System.Windows.Forms.SystemInformation.PowerStatus.PowerLineStatus
             == System.Windows.Forms.PowerLineStatus.Online;
         SetActiveModeRadio(onAc ? HpFanMode.Performance : HpFanMode.Cool);
+    }
+
+    // ----- CPU power ------------------------------------------------------------------------
+
+    // The BIOS can set the sustained CPU limit but not report it, so the app only ever sends the
+    // value chosen here, only in Performance mode, and leaves the other modes to the BIOS.
+    private const int CpuSafeWatts = 45;           // the i5-13420H's own base power
+    private const double CpuHotCelsius = 95;
+    private static readonly TimeSpan CpuHotFor = TimeSpan.FromSeconds(15);
+    private DateTime? _cpuHotSince;
+    private bool _cpuPowerLoweredForHeat;
+
+    private void LoadCpuPower() {
+        if (!_bios.SupportsCpuPowerLimits()) return;
+        CpuPowerCard.Visibility = Visibility.Visible;
+        foreach (RadioButton radio in CpuPowerPanel.Children.OfType<RadioButton>())
+            radio.IsChecked = int.Parse((string)radio.Tag) == _settings.CpuSustainedPowerWatts;
+        ApplyCpuPowerLimit();
+    }
+
+    private void CpuPower_Checked(object sender, RoutedEventArgs e) {
+        if (_initializing) return;
+        int previous = _settings.CpuSustainedPowerWatts;
+        _settings.CpuSustainedPowerWatts = int.Parse((string)((RadioButton)sender).Tag);
+        _settings.Save();
+
+        // Back to the BIOS's own limit: re-selecting the mode is the only way to ask for it, since
+        // the limit it had can't be read.
+        if (_settings.CpuSustainedPowerWatts == 0 && previous != 0 && _currentMode == HpFanMode.Performance) {
+            try { _bios.SetFanMode(HpFanMode.Performance); } catch (HpBiosException) { }
+        }
+        ApplyCpuPowerLimit();
+    }
+
+    /// <summary>Sends the chosen limit when Performance is active; called after every mode change.</summary>
+    private void ApplyCpuPowerLimit() {
+        _cpuHotSince = null;
+        _cpuPowerLoweredForHeat = false;
+        if (CpuPowerCard.Visibility != Visibility.Visible) return;
+
+        int watts = _settings.CpuSustainedPowerWatts;
+        if (watts == 0) {
+            CpuPowerStatusText.Text = T("Using the laptop's own limit for each mode.");
+            return;
+        }
+        if (_currentMode != HpFanMode.Performance) {
+            CpuPowerStatusText.Text = F("{0} W is used in Performance mode.", watts);
+            return;
+        }
+        try {
+            _bios.SetCpuSustainedPower((byte)watts);
+            CpuPowerStatusText.Text = F("{0} W applied. If the CPU stays at {1}°C, it's lowered to {2} W until the next mode change.",
+                watts, CpuHotCelsius, CpuSafeWatts);
+        } catch (HpBiosException ex) {
+            CpuPowerStatusText.Text = ex.Message;
+        }
+    }
+
+    // Safety net for a raised limit: sustained heat at the CPU's limit means the cooling can't keep up.
+    private void GuardCpuPowerLimit(double? cpuCelsius) {
+        bool raised = _settings.CpuSustainedPowerWatts > CpuSafeWatts && _currentMode == HpFanMode.Performance
+            && CpuPowerCard.Visibility == Visibility.Visible && !_cpuPowerLoweredForHeat;
+        if (!raised || cpuCelsius is not double celsius || celsius < CpuHotCelsius) {
+            _cpuHotSince = null;
+            return;
+        }
+        _cpuHotSince ??= DateTime.UtcNow;
+        if (DateTime.UtcNow - _cpuHotSince < CpuHotFor) return;
+
+        try {
+            _bios.SetCpuSustainedPower(CpuSafeWatts);
+            _cpuPowerLoweredForHeat = true;
+            CpuPowerStatusText.Text = F("The CPU stayed at {0}°C, so its limit was lowered to {1} W until the next mode change.", CpuHotCelsius, CpuSafeWatts);
+            _tray.ShowWarningBalloon("Victus Hub", F("CPU at {0}°C: power limit lowered to {1} W", CpuHotCelsius, CpuSafeWatts));
+        } catch (HpBiosException) {
+            // Try again next tick.
+        }
     }
 
     // ----- GPU power ------------------------------------------------------------------------
@@ -1466,6 +1586,7 @@ KeepLeftToRight(value);
         } catch (HpBiosException) {
             // The next mode change sets it anyway.
         }
+        ApplyCpuPowerLimit();
         UpdateSectionStatus();
     }
 
@@ -1517,6 +1638,9 @@ KeepLeftToRight(value);
 
         bool enabled = MaxFanCheckBox.IsChecked == true;
         if (enabled && AutoFanCheckBox.IsChecked == true) AutoFanCheckBox.IsChecked = false;
+        // A choice made by hand ends a cool-down; the switch now decides.
+        _coolDownTimer?.Stop();
+        _coolDownTimer = null;
 
         try {
             _bios.SetMaxFanSpeed(enabled);
@@ -2541,6 +2665,10 @@ KeepLeftToRight(valueText);
 
         DownloadSelectedButton.IsEnabled = false;
         InstallSelectedButton.IsEnabled = false;
+        if (!await MakeRestorePointIfWantedAsync()) {
+            UpdateBulkButtonsState();
+            return;
+        }
 
         int succeeded = 0, failed = 0;
         for (int i = 0; i < selected.Count; i++) {
@@ -2588,6 +2716,39 @@ KeepLeftToRight(valueText);
         }
     }
 
+    private void RestorePointCheckBox_Changed(object sender, RoutedEventArgs e) {
+        if (_initializing) return;
+        _settings.RestorePointBeforeUpdates = RestorePointCheckBox.IsChecked == true;
+        _settings.Save();
+    }
+
+    // With the option on, a restore point comes first. False means the user chose not to go on
+    // without one; a point Windows skipped because it made one today is fine and says so.
+    private async Task<bool> MakeRestorePointIfWantedAsync() {
+        if (!_settings.RestorePointBeforeUpdates) return true;
+
+        string status = UpdatesStatusText.Text;
+        UpdatesStatusText.Text = T("Creating a restore point… this can take a minute.");
+        (RestorePointOutcome outcome, string? detail) = await Task.Run(() => RestorePoint.Create("Victus Hub: before driver or BIOS update"));
+        UpdatesStatusText.Text = status;
+
+        switch (outcome) {
+            case RestorePointOutcome.Created:
+                UpdatesStatusText.Text = T("Restore point created.");
+                return true;
+            case RestorePointOutcome.SkippedRecentExists:
+                UpdatesStatusText.Text = detail == null
+                    ? T("Windows skipped the restore point: it makes at most one a day.")
+                    : F("Windows skipped the restore point: it makes at most one a day, and the latest is from {0}.", detail);
+                return true;
+            default:
+                return Message(this,
+                    F("Windows couldn't create a restore point ({0}). System Protection may be off for drive C: " +
+                      "(Control Panel → System → System protection).\n\nInstall anyway?", detail ?? "?"),
+                    "Victus Hub", MessageBoxButton.YesNo, MessageBoxImage.Warning) == MessageBoxResult.Yes;
+        }
+    }
+
     private static bool IsBiosUpdate(HpDriverUpdate update) => update.Category.Contains("BIOS", StringComparison.OrdinalIgnoreCase);
 
     // A BIOS flash that loses power part-way can leave the laptop unable to start, so it's only allowed
@@ -2626,6 +2787,10 @@ KeepLeftToRight(valueText);
         if (result != MessageBoxResult.Yes) return;
 
         runButton.IsEnabled = false;
+        if (!await MakeRestorePointIfWantedAsync()) {
+            runButton.IsEnabled = true;
+            return;
+        }
         runButton.Content = T("Installing...");
 
         int? exitCode = await RunInstallerProcessAsync(filePath);
@@ -2646,6 +2811,103 @@ KeepLeftToRight(valueText);
         }
     }
 
+    // ----- HP's own fan software ---------------------------------------------------------------
+
+    private async void LoadOmenConflict() {
+        List<OmenComponent> found = await Task.Run(OmenConflict.Detect);
+        bool switchedOffHere = _settings.DisabledOmenServices.Count > 0;
+        List<OmenComponent> active = found.Where(c => c.Running || !c.StartMode.Equals("Disabled", StringComparison.OrdinalIgnoreCase)).ToList();
+
+        if (active.Count == 0 && !switchedOffHere) {
+            OmenConflictCard.Visibility = Visibility.Collapsed;
+            return;
+        }
+        OmenConflictCard.Visibility = Visibility.Visible;
+        OmenConflictButton.IsEnabled = true;
+
+        if (active.Count > 0) {
+            OmenConflictText.Text = T("HP's own fan and performance software talks to the same BIOS controls as this app, and can undo its fan and mode changes. Turning it off stops it and keeps it from starting; nothing is deleted.");
+            OmenConflictListText.Text = string.Join("\n", active.Select(c =>
+                F("{0} ({1})", c.DisplayName, c.Running ? T("running") : T("not running"))));
+            OmenConflictButton.Content = T("Turn off");
+            OmenConflictButton.Tag = "off";
+        } else {
+            OmenConflictText.Text = T("Switched off by Victus Hub, so it can't change the fans or mode. Turn it back on if you want to use Omen Gaming Hub again.");
+            OmenConflictListText.Text = string.Join("\n", _settings.DisabledOmenServices.Keys);
+            OmenConflictButton.Content = T("Turn back on");
+            OmenConflictButton.Tag = "on";
+        }
+    }
+
+    private async void OmenConflictButton_Click(object sender, RoutedEventArgs e) {
+        OmenConflictButton.IsEnabled = false;
+        List<string> problems;
+        if ((string?)OmenConflictButton.Tag == "off") {
+            (Dictionary<string, string> previous, List<string> issues) = await Task.Run(() => (OmenConflict.Disable(out List<string> p), p));
+            problems = issues;
+            foreach ((string name, string mode) in previous) _settings.DisabledOmenServices[name] = mode;
+        } else {
+            var previous = new Dictionary<string, string>(_settings.DisabledOmenServices);
+            problems = await Task.Run(() => { OmenConflict.Restore(previous, out List<string> p); return p; });
+            if (problems.Count == 0) _settings.DisabledOmenServices.Clear();
+        }
+        _settings.Save();
+        LoadOmenConflict();
+        if (problems.Count > 0)
+            Message(this, F("Some of it didn't change: {0}", string.Join("; ", problems)), "Victus Hub", MessageBoxButton.OK, MessageBoxImage.Warning);
+    }
+
+    // ----- Startup apps ---------------------------------------------------------------------------
+
+    private async void LoadStartupApps() {
+        List<StartupApp> apps = await Task.Run(StartupApps.List);
+        StartupAppsListPanel.Children.Clear();
+        if (apps.Count == 0) {
+            StartupAppsListPanel.Children.Add(new TextBlock { Text = T("Nothing else starts with Windows."), FontSize = 12 });
+            return;
+        }
+        for (int i = 0; i < apps.Count; i++)
+            StartupAppsListPanel.Children.Add(BuildStartupAppRow(apps[i], first: i == 0));
+    }
+
+    // Icon, name with publisher and where it's registered, and its switch.
+    private FrameworkElement BuildStartupAppRow(StartupApp app, bool first) {
+        var row = new Grid { Margin = new Thickness(0, first ? 0 : 10, 0, 0) };
+        row.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+        row.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+
+        FrameworkElement icon = BuildAppIcon(app.ExePath ?? app.Command, app.Name);
+        row.Children.Add(icon);
+
+        var text = new StackPanel { Margin = new Thickness(12, 0, 12, 0), VerticalAlignment = VerticalAlignment.Center };
+        var name = new TextBlock { Text = app.Name, FontSize = 13, TextTrimming = TextTrimming.CharacterEllipsis, ToolTip = app.Command };
+        name.SetResourceReference(TextBlock.ForegroundProperty, "TextPrimaryBrush");
+        KeepLeftToRight(name);
+        text.Children.Add(name);
+        string detail = app.Publisher == null ? T(app.Source) : $"{app.Publisher}  ·  {T(app.Source)}";
+        var detailText = new TextBlock { Text = detail, FontSize = 11, Margin = new Thickness(0, 2, 0, 0), TextTrimming = TextTrimming.CharacterEllipsis };
+        detailText.SetResourceReference(TextBlock.ForegroundProperty, "TextSecondaryBrush");
+        text.Children.Add(detailText);
+        Grid.SetColumn(text, 1);
+        row.Children.Add(text);
+
+        var toggle = new CheckBox { Style = (Style)FindResource("GlowToggle"), IsChecked = app.Enabled, VerticalAlignment = VerticalAlignment.Center };
+        RoutedEventHandler changed = (_, _) => {
+            try {
+                StartupApps.SetEnabled(app, toggle.IsChecked == true);
+            } catch (Exception ex) {
+                Message(this, F("Couldn't change {0}: {1}", app.Name, ex.Message), "Victus Hub", MessageBoxButton.OK, MessageBoxImage.Warning);
+                LoadStartupApps();
+            }
+        };
+        toggle.Checked += changed;
+        toggle.Unchecked += changed;
+        Grid.SetColumn(toggle, 2);
+        row.Children.Add(toggle);
+        return row;
+    }
+
     // ----- System tab: laptop details, battery health, graphics mode ---------------------------
 
     private bool _systemTabLoaded;
@@ -2660,6 +2922,8 @@ KeepLeftToRight(valueText);
         LoadGraphicsMode();
         FanTestButton.IsEnabled = _bios.IsAvailable;
         RefreshMaintenanceSizes();
+        LoadStartupApps();
+        LoadOmenConflict();
 
         Task<List<SystemInfoItem>> infoTask = Task.Run(SystemInfo.Collect);
         Task<BatteryHealthReport?> batteryTask = Task.Run(BatteryHealth.TryRead);
@@ -3205,6 +3469,100 @@ KeepLeftToRight(temperature);
         else if (_activeGameProfileExeName != null) _wifiTuning.Start();
     }
 
+    private void ThrottleBackgroundCheckBox_Changed(object sender, RoutedEventArgs e) {
+        if (_initializing) return;
+        _settings.ThrottleBackgroundForGames = ThrottleBackgroundCheckBox.IsChecked == true;
+        _settings.Save();
+
+        // Takes effect straight away for a game that's already running.
+        if (!_settings.ThrottleBackgroundForGames) _backgroundThrottle.Stop();
+        else if (_activeGameProfileExeName != null) _backgroundThrottle.Start();
+    }
+
+    private void ClearStandbyCheckBox_Changed(object sender, RoutedEventArgs e) {
+        if (_initializing) return;
+        _settings.ClearStandbyOnGameStart = ClearStandbyCheckBox.IsChecked == true;
+        _settings.Save();
+    }
+
+    private void CoolDownCheckBox_Changed(object sender, RoutedEventArgs e) {
+        if (_initializing) return;
+        _settings.CoolDownAfterGames = CoolDownCheckBox.IsChecked == true;
+        _settings.Save();
+        if (!_settings.CoolDownAfterGames) EndCoolDown();
+    }
+
+    // ----- Cool-down after a game -----
+
+    private static readonly TimeSpan CoolDownLength = TimeSpan.FromMinutes(2);
+    private DispatcherTimer? _coolDownTimer;
+
+    private void StartCoolDown() {
+        // Max fan already on (by hand or because it was on before the game): nothing to add.
+        if (MaxFanCheckBox.IsChecked == true || !_bios.IsAvailable) return;
+        try {
+            _bios.SetMaxFanSpeed(true);
+        } catch (HpBiosException) {
+            return;
+        }
+        _coolDownTimer?.Stop();
+        _coolDownTimer = new DispatcherTimer { Interval = CoolDownLength };
+        _coolDownTimer.Tick += (_, _) => EndCoolDown();
+        _coolDownTimer.Start();
+    }
+
+    /// <summary>Ends a running cool-down, putting max fan back to what the switch shows.</summary>
+    private void EndCoolDown() {
+        if (_coolDownTimer == null) return;
+        _coolDownTimer.Stop();
+        _coolDownTimer = null;
+        try {
+            _bios.SetMaxFanSpeed(MaxFanCheckBox.IsChecked == true);
+        } catch (HpBiosException) {
+            // The next max-fan change sets it anyway.
+        }
+    }
+
+    // ----- Tuned Performance plan -----
+
+    private void TunedPlanCheckBox_Changed(object sender, RoutedEventArgs e) {
+        if (_initializing) return;
+        bool on = TunedPlanCheckBox.IsChecked == true;
+        _settings.TunedPerformancePlan = on;
+        TunedPlanStatusText.Visibility = Visibility.Visible;
+
+        if (on) {
+            Dictionary<string, uint> originals = WindowsPowerPlan.TunePerformanceScheme(out List<string> changed);
+            // Keep the first original of each value, in case it's switched on twice.
+            foreach ((string setting, uint value) in originals) _settings.PerformancePlanOriginals.TryAdd(setting, value);
+            TunedPlanStatusText.Text = changed.Count == 0
+                ? T("Already tuned: nothing needed changing.")
+                : F("Changed: {0}", string.Join("; ", changed));
+        } else {
+            WindowsPowerPlan.RestorePerformanceScheme(_settings.PerformancePlanOriginals);
+            _settings.PerformancePlanOriginals.Clear();
+            TunedPlanStatusText.Text = T("Put back the way it was.");
+        }
+        _settings.Save();
+    }
+
+    private void PluggedInTweaksCheckBox_Changed(object sender, RoutedEventArgs e) {
+        if (_initializing) return;
+        _settings.PluggedInTweaks = PluggedInTweaksCheckBox.IsChecked == true;
+        _settings.Save();
+        bool on = _settings.PluggedInTweaks;
+        _ = Task.Run(() => WindowsPowerPlan.SetPluggedInTweaks(on));
+    }
+
+    private void GameBarRecordingCheckBox_Changed(object sender, RoutedEventArgs e) {
+        if (_initializing) return;
+        try {
+            GameBarRecording.SetEnabled(GameBarRecordingCheckBox.IsChecked == true);
+        } catch (Exception ex) {
+            Message(this, F("Couldn't change Game Bar recording: {0}", ex.Message), "Victus Hub", MessageBoxButton.OK, MessageBoxImage.Warning);
+        }
+    }
+
     // ----- Per-game profiles ----------------------------------------------------------------
 
     // At most one tracked game "owns" the current mode at a time; when it exits, the mode from
@@ -3216,6 +3574,7 @@ KeepLeftToRight(temperature);
 
     private readonly GameBoost _gameBoost = new();
     private readonly WifiTuning _wifiTuning = new();
+    private readonly BackgroundThrottle _backgroundThrottle = new();
     // The resolution from before a game lowered it; null when no game changed it.
     private (int Width, int Height)? _preGameResolution;
 
@@ -3318,7 +3677,9 @@ KeepLeftToRight(temperature);
             (int, int)? resolution = profile.ResolutionWidth > 0 && profile.ResolutionHeight > 0
                 ? (profile.ResolutionWidth, profile.ResolutionHeight) : null;
             // With Wi-Fi tuning on, every game in the list counts, even one with nothing else set.
-            if (mode == null && hz == 0 && !profile.MaxFan && !profile.Boost && resolution == null && !_settings.TuneWifiForGames) continue;
+            if (mode == null && hz == 0 && !profile.MaxFan && !profile.Boost && resolution == null
+                && !_settings.TuneWifiForGames && !_settings.ThrottleBackgroundForGames
+                && !_settings.ClearStandbyOnGameStart && !_settings.CoolDownAfterGames) continue;
 
             string exeName = Path.GetFileNameWithoutExtension(profile.ExecutablePath);
             if (exeName.Length > 0) tracked.Add(new TrackedGame(exeName, profile.Name, mode, hz, profile.MaxFan, profile.Boost, resolution));
@@ -3331,6 +3692,7 @@ KeepLeftToRight(temperature);
             if (IsGameRunning(running, _activeGameProfileExeName)) {
                 KeepMaxFanAsserted();
                 KeepGameBoosted(_activeGameProfileExeName);
+                _backgroundThrottle.Keep(); // a browser opened mid-game
                 return;
             }
 
@@ -3345,13 +3707,23 @@ KeepLeftToRight(temperature);
             }
             _gameBoost.Stop();
             _wifiTuning.Stop();
+            _backgroundThrottle.Stop();
             _activeGameProfileExeName = null;
-            _tray.ShowBalloon("Victus Hub", F("{0} closed — restored {1} mode", endedGame, Mode(_preGameMode)));
+            bool coolingDown = false;
+            if (_settings.CoolDownAfterGames) {
+                StartCoolDown();
+                coolingDown = _coolDownTimer != null;
+            }
+            _tray.ShowBalloon("Victus Hub", F("{0} closed — restored {1} mode", endedGame, Mode(_preGameMode))
+                + (coolingDown ? T(", fans on full for 2 minutes to cool down") : ""));
         }
 
         foreach (TrackedGame game in tracked) {
             if (!IsGameRunning(running, game.ExeName)) continue;
 
+            // A new game takes over from a cool-down still running for the last one.
+            EndCoolDown();
+            bool memoryCleared = _settings.ClearStandbyOnGameStart && StandbyMemory.Purge();
             _preGameMode = _currentMode;
             if (game.Mode.HasValue) ApplyMode(game.Mode.Value);
             if (game.RefreshRateHz > 0) ApplyRefreshRate(game.RefreshRateHz);
@@ -3371,6 +3743,7 @@ KeepLeftToRight(temperature);
                 KeepGameBoosted(game.ExeName);
             }
             bool wifiTuned = _settings.TuneWifiForGames && _wifiTuning.Start() > 0;
+            if (_settings.ThrottleBackgroundForGames) _backgroundThrottle.Start();
 
             var changes = new List<string>();
             if (game.Mode.HasValue) changes.Add(F("{0} mode", Mode(game.Mode.Value)));
@@ -3379,6 +3752,7 @@ KeepLeftToRight(temperature);
             if (game.MaxFan) changes.Add(T("max fan"));
             if (game.Boost) changes.Add(T("game boost"));
             if (wifiTuned) changes.Add(T("Wi-Fi tuning"));
+            if (memoryCleared) changes.Add(T("standby memory cleared"));
             if (changes.Count > 0)
                 _tray.ShowBalloon("Victus Hub", F("{0} detected — switched to {1}", game.Name, string.Join(T(", "), changes)));
             break;
@@ -3465,12 +3839,31 @@ KeepLeftToRight(temperature);
         if (paths.All(_frameLimitsKnownFor.Contains)) return;
 
         _frameLimitsLoading = true;
-        Dictionary<string, int> limits = await Task.Run(() => NvidiaFrameLimiter.GetLimits(paths));
+        (Dictionary<string, int> limits, HashSet<string> maxPerformance) = await Task.Run(() =>
+            (NvidiaFrameLimiter.GetLimits(paths), NvidiaFrameLimiter.GetPreferMaximumPerformance(paths)));
         _frameLimitsLoading = false;
 
         foreach (string path in paths) _frameLimitsKnownFor.Add(path);
         foreach ((string path, int fps) in limits) _frameLimits[path] = fps;
+        _maxGpuPerformanceGames.UnionWith(maxPerformance);
         RenderGameProfilesList();
+    }
+
+    // Games whose NVIDIA profile says "Prefer maximum performance", read with the FPS caps.
+    private readonly HashSet<string> _maxGpuPerformanceGames = new(StringComparer.OrdinalIgnoreCase);
+
+    private async void SetGameMaxGpuPerformance(string exePath, bool enabled, CheckBox toggle) {
+        toggle.IsEnabled = false;
+        bool applied = await Task.Run(() => NvidiaFrameLimiter.SetPreferMaximumPerformance(exePath, enabled));
+        toggle.IsEnabled = true;
+        if (applied) {
+            if (enabled) _maxGpuPerformanceGames.Add(exePath);
+            else _maxGpuPerformanceGames.Remove(exePath);
+            return;
+        }
+        // Put the switch back without re-running this handler.
+        RenderGameProfilesList();
+        Message(this, T("The NVIDIA driver didn't accept the change."), "Victus Hub", MessageBoxButton.OK, MessageBoxImage.Warning);
     }
 
     private void RenderGameProfilesList() {
@@ -3486,12 +3879,20 @@ KeepLeftToRight(temperature);
 
         foreach (GameProfile profile in _settings.GameProfiles.OrderBy(p => p.Name, StringComparer.OrdinalIgnoreCase))
             GameProfilesListPanel.Children.Add(BuildGameCard(profile));
+        SizeGameCards();
     }
 
     // Two cards per row fit comfortably from about 760px; narrower than that they get one each.
-    private void GameProfilesListPanel_SizeChanged(object sender, SizeChangedEventArgs e) {
-        int columns = e.NewSize.Width >= 760 ? 2 : 1;
-        if (GameProfilesListPanel.Columns != columns) GameProfilesListPanel.Columns = columns;
+    // A wrap panel sizes rows by their own cards, so a folded card stays short beside an open one.
+    private void GameProfilesListPanel_SizeChanged(object sender, SizeChangedEventArgs e) => SizeGameCards();
+
+    private void SizeGameCards() {
+        double width = GameProfilesListPanel.ActualWidth;
+        if (width <= 0) return;
+        int columns = width >= 760 ? 2 : 1;
+        foreach (FrameworkElement card in GameProfilesListPanel.Children.OfType<FrameworkElement>())
+            // Width doesn't include the card's own side margins, which the row has to fit too.
+            card.Width = Math.Max(0, Math.Floor(width / columns) - card.Margin.Left - card.Margin.Right);
     }
 
     private FrameworkElement BuildGameCard(GameProfile profile) {
@@ -3502,6 +3903,7 @@ KeepLeftToRight(temperature);
         var header = new Grid { Margin = new Thickness(0, 0, 0, 4) };
         header.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
         header.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+        header.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
         header.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
 
         FrameworkElement icon = BuildAppIcon(profile.ExecutablePath, profile.Name);
@@ -3541,13 +3943,45 @@ KeepLeftToRight(temperature);
             Grid.SetColumn(removeButton, 2);
             header.Children.Add(removeButton);
         }
+
+        // Fold/unfold: the arrow, or anywhere on the header that isn't a button.
+        var chevron = new TextBlock {
+            FontFamily = new System.Windows.Media.FontFamily("Segoe Fluent Icons, Segoe MDL2 Assets"), FontSize = 12,
+            Margin = new Thickness(12, 0, 2, 0), VerticalAlignment = VerticalAlignment.Center
+        };
+        chevron.SetResourceReference(TextBlock.ForegroundProperty, "TextSecondaryBrush");
+        Grid.SetColumn(chevron, 3);
+        header.Children.Add(chevron);
+        header.Background = System.Windows.Media.Brushes.Transparent;
+        header.Cursor = System.Windows.Input.Cursors.Hand;
+        header.ToolTip = T("Click to show or hide this game's settings");
         body.Children.Add(header);
 
-        body.Children.Add(BuildLabeledRow("Mode", null, BuildGameModeSelector(profile)));
-        if (_refreshRates.Count > 1) body.Children.Add(BuildLabeledRow("Refresh rate", null, BuildGameRefreshRateSelector(profile)));
-        body.Children.Add(BuildLabeledRow("Resolution", "Empty = no change", BuildGameResolutionSelector(profile)));
+        var summary = new TextBlock { FontSize = 11.5, TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 6, 0, 0) };
+        summary.SetResourceReference(TextBlock.ForegroundProperty, "TextSecondaryBrush");
+        body.Children.Add(summary);
+        var details = new StackPanel();
+        body.Children.Add(details);
+
+        void ShowExpanded() {
+            details.Visibility = profile.Expanded ? Visibility.Visible : Visibility.Collapsed;
+            summary.Visibility = profile.Expanded ? Visibility.Collapsed : Visibility.Visible;
+            summary.Text = DescribeGameProfile(profile, installed);
+            chevron.Text = profile.Expanded ? "" : ""; // chevron up / down
+        }
+        header.MouseLeftButtonUp += (_, e) => {
+            if (e.OriginalSource is DependencyObject source && FindParent<Button>(source) != null) return;
+            profile.Expanded = !profile.Expanded;
+            _settings.Save();
+            ShowExpanded();
+        };
+        ShowExpanded();
+
+        details.Children.Add(BuildLabeledRow("Mode", null, BuildGameModeSelector(profile)));
+        if (_refreshRates.Count > 1) details.Children.Add(BuildLabeledRow("Refresh rate", null, BuildGameRefreshRateSelector(profile)));
+        details.Children.Add(BuildLabeledRow("Resolution", "Empty = no change", BuildGameResolutionSelector(profile)));
         if (NvidiaFrameLimiter.IsAvailable && installed)
-            body.Children.Add(BuildLabeledRow("FPS cap", "Empty = no cap", BuildGameFrameLimitSelector(profile)));
+            details.Children.Add(BuildLabeledRow("FPS cap", "Empty = no cap", BuildGameFrameLimitSelector(profile)));
 
         if (NvidiaGpuSensor.IsAvailable && installed) {
             var gpuToggle = new CheckBox {
@@ -3556,7 +3990,18 @@ KeepLeftToRight(temperature);
             };
             gpuToggle.Checked += (_, _) => SetGameGpuPreference(profile.ExecutablePath, true);
             gpuToggle.Unchecked += (_, _) => SetGameGpuPreference(profile.ExecutablePath, false);
-            body.Children.Add(gpuToggle);
+            details.Children.Add(gpuToggle);
+        }
+
+        if (NvidiaFrameLimiter.IsAvailable && installed) {
+            var maxGpuToggle = new CheckBox {
+                Content = T("Max GPU performance"), Style = (Style)FindResource("GlowToggle"), Margin = new Thickness(0, 10, 0, 0),
+                ToolTip = T("Keeps the NVIDIA GPU at full clocks while this game runs, for steadier frame times. Stored in the NVIDIA driver, the same as Control Panel's \"Prefer maximum performance\". Uses more power."),
+                IsChecked = _maxGpuPerformanceGames.Contains(profile.ExecutablePath)
+            };
+            maxGpuToggle.Checked += (_, _) => SetGameMaxGpuPerformance(profile.ExecutablePath, true, maxGpuToggle);
+            maxGpuToggle.Unchecked += (_, _) => SetGameMaxGpuPerformance(profile.ExecutablePath, false, maxGpuToggle);
+            details.Children.Add(maxGpuToggle);
         }
 
         var maxFanToggle = new CheckBox {
@@ -3566,7 +4011,7 @@ KeepLeftToRight(temperature);
         };
         maxFanToggle.Checked += (_, _) => SaveGameMaxFan(profile, true);
         maxFanToggle.Unchecked += (_, _) => SaveGameMaxFan(profile, false);
-        body.Children.Add(maxFanToggle);
+        details.Children.Add(maxFanToggle);
 
         var boostToggle = new CheckBox {
             Content = T("Game boost"), Style = (Style)FindResource("GlowToggle"), Margin = new Thickness(0, 10, 0, 0),
@@ -3575,9 +4020,35 @@ KeepLeftToRight(temperature);
         };
         boostToggle.Checked += (_, _) => SaveGameBoost(profile, true);
         boostToggle.Unchecked += (_, _) => SaveGameBoost(profile, false);
-        body.Children.Add(boostToggle);
+        details.Children.Add(boostToggle);
 
-        return new Border { Style = (Style)FindResource("Card"), Margin = new Thickness(7, 0, 7, 14), Child = body };
+        // Top-aligned so a folded card keeps its own height beside an open one in the same row.
+        return new Border {
+            Style = (Style)FindResource("Card"), Margin = new Thickness(7, 0, 7, 14), Child = body, VerticalAlignment = VerticalAlignment.Top
+        };
+    }
+
+    // A folded card's one line: what this game switches on, e.g. "Balanced · 60Hz · NVIDIA GPU · Max fan".
+    private string DescribeGameProfile(GameProfile profile, bool installed) {
+        var parts = new List<string> {
+            Enum.TryParse(profile.Mode, out HpFanMode mode) ? Mode(mode) : T("Default")
+        };
+        if (profile.RefreshRateHz > 0) parts.Add($"{profile.RefreshRateHz}Hz");
+        if (profile.ResolutionWidth > 0 && profile.ResolutionHeight > 0) parts.Add($"{profile.ResolutionWidth}×{profile.ResolutionHeight}");
+        if (_frameLimits.TryGetValue(profile.ExecutablePath, out int fps)) parts.Add($"{fps} FPS");
+        if (installed && NvidiaGpuSensor.IsAvailable && GpuPreference.IsHighPerformance(profile.ExecutablePath)) parts.Add(T("NVIDIA GPU"));
+        if (_maxGpuPerformanceGames.Contains(profile.ExecutablePath)) parts.Add(T("Max GPU performance"));
+        if (profile.MaxFan) parts.Add(T("Max fan"));
+        if (profile.Boost) parts.Add(T("Game boost"));
+        return string.Join("  ·  ", parts);
+    }
+
+    private static T? FindParent<T>(DependencyObject child) where T : DependencyObject {
+        for (DependencyObject? current = child; current != null; current = VisualTreeHelper.GetParent(current)) {
+            if (current is T match) return match;
+            if (current is not Visual) return null; // e.g. a Run inside a TextBlock: no visual parent
+        }
+        return null;
     }
 
     // Install sizes are cached for the session: Steam's is instant, but other games are measured by
@@ -4241,12 +4712,14 @@ FlowDirection = FlowDirection.LeftToRight
         // Reopens OneDrive if a game boost had closed it, and puts back anything else a running game changed.
         _gameBoost.Stop();
         _wifiTuning.Stop();
+        _backgroundThrottle.Stop();
         RestorePreGameResolution();
 
         // Max fan the app switched on for a game is the app's to undo, even on the way out.
         if (_activeGameMaxFan && !_preGameMaxFan) {
             try { _bios.SetMaxFanSpeed(false); } catch (HpBiosException) { }
         }
+        EndCoolDown();
         // The same for anything switched off or down while the laptop sat idle.
         if (_idleCoolActive) EndIdleCooling();
         if (_backlightOffForIdle) EndBacklightTimeout();

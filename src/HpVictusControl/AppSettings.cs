@@ -17,6 +17,8 @@ public sealed class GameProfile {
     public int ResolutionWidth { get; set; }
     public int ResolutionHeight { get; set; }
     public bool IsScanned { get; set; }
+    // Card open on the Games page; folded cards show a one-line summary instead.
+    public bool Expanded { get; set; }
 }
 
 /// <summary>Small local settings file so the app remembers user preferences across restarts.</summary>
@@ -29,6 +31,14 @@ public sealed class AppSettings {
     // 0 = scale the interface with the window; otherwise a fixed factor (1.15 = 115%).
     public double InterfaceScale { get; set; }
     public bool TuneWifiForGames { get; set; }
+    public bool ThrottleBackgroundForGames { get; set; }    // Omen services this app switched off, with the start mode each had before ("Auto", "Manual").
+    public Dictionary<string, string> DisabledOmenServices { get; set; } = new();
+    public bool PluggedInTweaks { get; set; }
+    public bool ClearStandbyOnGameStart { get; set; }
+    public bool CoolDownAfterGames { get; set; }
+    // Performance-scheme values this app changed, keyed by setting GUID, with what each was before.
+    public Dictionary<string, uint> PerformancePlanOriginals { get; set; } = new();
+    public bool TunedPerformancePlan { get; set; }
     public bool AutoAddGames { get; set; } = true;
     public bool AutoCleanDriverDownloads { get; set; } = true;
     public bool AlwaysOnTop { get; set; }
@@ -42,6 +52,10 @@ public sealed class AppSettings {
     // GPU power as last chosen in the app; null = never changed here, so the BIOS's own setting stands.
     public bool? GpuCustomTgp { get; set; }
     public bool? GpuDynamicBoost { get; set; }
+    // Sustained CPU power (PL1) in Performance mode, in watts; 0 = the BIOS's own limit.
+    public int CpuSustainedPowerWatts { get; set; }
+    // Create a Windows restore point before installing a BIOS or driver update.
+    public bool RestorePointBeforeUpdates { get; set; }
     public bool IdleCoolEnabled { get; set; }
     public int IdleCoolMinutes { get; set; } = 5;
     // 0 = leave the keyboard backlight on however long the laptop sits idle.

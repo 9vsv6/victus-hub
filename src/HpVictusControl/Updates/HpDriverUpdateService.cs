@@ -119,9 +119,34 @@ public static class HpDriverUpdateService {
 
         string? installedBios = InstalledDriverInfo.GetBiosVersion();
         List<(string DeviceName, string? DriverVersion)> installedDrivers = InstalledDriverInfo.GetSignedDrivers();
+        List<(string DeviceName, string? DriverVersion)> displayDrivers = InstalledDriverInfo.GetDisplayDrivers();
         List<InstalledStorage.Disk> disks = InstalledStorage.GetDisks();
+        var machine = new Lazy<(List<string> DeviceIds, bool MissingDriver)>(() =>
+            (InstalledDriverInfo.GetDeviceIds(), InstalledDriverInfo.AnyDeviceMissingDriver()));
 
-        return deduped.Where(update => !IsAlreadyUpToDate(update, installedBios, installedDrivers, disks)).ToList();
+        return deduped.Where(update => !IsAlreadyUpToDate(update, installedBios, installedDrivers, displayDrivers, disks)
+                                       && !IsNotApplicable(update, machine)).ToList();
+    }
+
+    // Intel's HID Event Filter drives the hotkey/5-button hardware some HP models have (ACPI ids below);
+    // on a laptop without that device there's nothing for it to install onto.
+    private static readonly string[] HidEventFilterIds = { "INTC1051", "INTC1054", "INTC1070", "INTC1078", "INT33D5" };
+
+    /// <summary>
+    /// Packages that can't do anything on this particular laptop, whatever their version:
+    /// a HID Event Filter with no such device, and the Intel chipset utility when every device
+    /// already has its driver (that package only supplies INF files for devices that lack one;
+    /// its version, e.g. 10.1.20398.8776, can't be compared with the INFs' own, e.g. 10.1.49.12).
+    /// </summary>
+    private static bool IsNotApplicable(HpDriverUpdate update, Lazy<(List<string> DeviceIds, bool MissingDriver)> machine) {
+        string title = update.Title;
+        if (title.Contains("HID", StringComparison.OrdinalIgnoreCase) && title.Contains("Event Filter", StringComparison.OrdinalIgnoreCase))
+            return !machine.Value.DeviceIds.Any(id => HidEventFilterIds.Any(hw => id.Contains(hw, StringComparison.OrdinalIgnoreCase)));
+
+        if (title.Contains("Chipset", StringComparison.OrdinalIgnoreCase) && title.Contains("Intel", StringComparison.OrdinalIgnoreCase))
+            return !machine.Value.MissingDriver;
+
+        return false;
     }
 
     public static DateTime ParseReleaseDate(string text) => ParseDate(text);
@@ -130,7 +155,7 @@ public static class HpDriverUpdateService {
 
     private static bool IsAlreadyUpToDate(
             HpDriverUpdate update, string? installedBios, List<(string DeviceName, string? DriverVersion)> installedDrivers,
-            List<InstalledStorage.Disk> disks) {
+            List<(string DeviceName, string? DriverVersion)> displayDrivers, List<InstalledStorage.Disk> disks) {
 
         if (InstalledUpdateHistory.IsMarkedInstalled(update)) return true;
 
@@ -170,7 +195,7 @@ public static class HpDriverUpdateService {
         // confident match — but "Driver-Graphics" + "nvidia" is already unambiguous: a laptop
         // has at most one GPU per vendor).
         (string DeviceName, string? DriverVersion)? match = update.Category.Contains("Graphics", StringComparison.OrdinalIgnoreCase)
-            ? FindGraphicsDriverMatch(update.Title, installedDrivers)
+            ? FindGraphicsDriverMatch(update.Title, displayDrivers)
             : FindBestDriverMatch(update.Title, installedDrivers);
 
         if (match is null || !TryExtractVersion(match.Value.DriverVersion ?? "", out Version? installedVersion))

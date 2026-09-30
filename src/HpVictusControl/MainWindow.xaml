@@ -163,8 +163,10 @@
             <Setter Property="Template">
                 <Setter.Value>
                     <ControlTemplate TargetType="RadioButton">
-                        <Border x:Name="Bg" CornerRadius="10" Padding="0,12" Margin="0,0,0,6"
-                                BorderThickness="1" BorderBrush="Transparent">
+                        <!-- Transparent rather than no background: without it only the icon and label
+                             took clicks, not the rest of the tile. -->
+                        <Border x:Name="Bg" CornerRadius="10" Padding="0,15" Margin="0,0,0,6" MinHeight="64"
+                                Background="Transparent" BorderThickness="1" BorderBrush="Transparent">
                             <StackPanel HorizontalAlignment="Center">
                                 <Viewbox Width="19" Height="19" HorizontalAlignment="Center">
                                     <Path Data="{Binding RelativeSource={RelativeSource TemplatedParent}, Path=Tag}"
@@ -185,9 +187,14 @@
                                 </Setter>
                                 <Setter Property="Foreground" Value="{DynamicResource AccentBrush}"/>
                             </Trigger>
-                            <Trigger Property="IsMouseOver" Value="True">
+                            <MultiTrigger>
+                                <MultiTrigger.Conditions>
+                                    <Condition Property="IsMouseOver" Value="True"/>
+                                    <Condition Property="IsChecked" Value="False"/>
+                                </MultiTrigger.Conditions>
+                                <Setter TargetName="Bg" Property="Background" Value="{DynamicResource TrackBrush}"/>
                                 <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}"/>
-                            </Trigger>
+                            </MultiTrigger>
                         </ControlTemplate.Triggers>
                     </ControlTemplate>
                 </Setter.Value>
@@ -853,8 +860,37 @@
                                         <TextBlock Text="Performance when plugged in, Cool on battery" FontSize="11"
                                                    Foreground="{DynamicResource TextSecondaryBrush}" Margin="26,3,0,0"/>
 
+                                        <Border Height="1" Background="{DynamicResource BorderBrush2}" Margin="0,14,0,14"/>
+
+                                        <CheckBox x:Name="TunedPlanCheckBox" Content="Tuned power plan in Performance mode" Style="{StaticResource GlowToggle}"
+                                                  Checked="TunedPlanCheckBox_Changed" Unchecked="TunedPlanCheckBox_Changed"/>
+                                        <TextBlock Text="Faster CPU boost and no parked cores while plugged in, in Performance mode only. Turning it off puts back the values it changed."
+                                                   FontSize="11" TextWrapping="Wrap" Foreground="{DynamicResource TextSecondaryBrush}" Margin="26,3,0,0"/>
+                                        <TextBlock x:Name="TunedPlanStatusText" FontSize="11" TextWrapping="Wrap" Margin="26,4,0,0"
+                                                   Foreground="{DynamicResource TextSecondaryBrush}" Visibility="Collapsed"/>
+
                                         <TextBlock x:Name="CycleModeTipText" Text="Tip: press Ctrl+Alt+F12 anywhere to cycle performance mode" FontSize="11"
                                                    Foreground="{DynamicResource TextSecondaryBrush}" Margin="0,12,0,0" TextWrapping="Wrap"/>
+                                    </StackPanel>
+                                </Border>
+
+                                <!-- Sustained CPU power in Performance mode, where the BIOS takes power limits -->
+                                <Border x:Name="CpuPowerCard" Style="{StaticResource Card}" Visibility="Collapsed">
+                                    <StackPanel>
+                                        <TextBlock Text="CPU power" Style="{StaticResource SectionHeader}"/>
+                                        <TextBlock Text="How much power the CPU may keep drawing under long loads (PL1) in Performance mode. Higher holds clock speeds up longer, and runs hotter."
+                                                   FontSize="11" TextWrapping="Wrap" Foreground="{DynamicResource TextSecondaryBrush}" Margin="0,0,0,10"/>
+                                        <Border Background="{DynamicResource TrackBrush}" CornerRadius="9" MaxWidth="440" HorizontalAlignment="Left">
+                                            <UniformGrid x:Name="CpuPowerPanel" Rows="1">
+                                                <RadioButton Content="Default" Tag="0" GroupName="CpuPower" Style="{StaticResource SegmentRadio}" Checked="CpuPower_Checked"/>
+                                                <RadioButton Content="45 W" Tag="45" GroupName="CpuPower" Style="{StaticResource SegmentRadio}" Checked="CpuPower_Checked"/>
+                                                <RadioButton Content="55 W" Tag="55" GroupName="CpuPower" Style="{StaticResource SegmentRadio}" Checked="CpuPower_Checked"/>
+                                                <RadioButton Content="65 W" Tag="65" GroupName="CpuPower" Style="{StaticResource SegmentRadio}" Checked="CpuPower_Checked"/>
+                                                <RadioButton Content="75 W" Tag="75" GroupName="CpuPower" Style="{StaticResource SegmentRadio}" Checked="CpuPower_Checked"/>
+                                            </UniformGrid>
+                                        </Border>
+                                        <TextBlock x:Name="CpuPowerStatusText" FontSize="11" TextWrapping="Wrap" Margin="0,10,0,0"
+                                                   Foreground="{DynamicResource TextSecondaryBrush}"/>
                                     </StackPanel>
                                 </Border>
 
@@ -916,46 +952,85 @@
 
                     <!-- ===== Games section ===== -->
                     <StackPanel x:Name="GamesSectionPanel" Visibility="Collapsed">
-                        <Border Style="{StaticResource Card}">
-                            <Grid>
-                                <Grid.ColumnDefinitions>
-                                    <ColumnDefinition Width="*"/>
-                                    <ColumnDefinition Width="Auto"/>
-                                </Grid.ColumnDefinitions>
-                                <StackPanel VerticalAlignment="Center">
-                                    <StackPanel Orientation="Horizontal">
-                                        <TextBlock Text="Games" Style="{StaticResource SectionHeader}" Margin="0,0,8,4"/>
-                                        <TextBlock x:Name="GameCountText" FontSize="11" Margin="0,1,0,4" VerticalAlignment="Center"
-                                                   Foreground="{DynamicResource TextSecondaryBrush}"/>
-                                    </StackPanel>
-                                    <TextBlock TextWrapping="Wrap" FontSize="11" Foreground="{DynamicResource TextSecondaryBrush}"
-                                               Text="Mode, refresh rate and max fan switch on while a game runs and go back when it closes. The FPS cap is stored in the NVIDIA driver, the same as Control Panel's Max Frame Rate."/>
-                                    <TextBlock x:Name="GameScanStatusText" TextWrapping="Wrap" FontSize="11" Margin="0,6,0,0"
-                                               Foreground="{DynamicResource TextSecondaryBrush}" Visibility="Collapsed"/>
-                                    <CheckBox x:Name="TuneWifiCheckBox" Content="Tune Wi-Fi while playing" Style="{StaticResource GlowToggle}"
-                                              Margin="0,12,0,0" HorizontalAlignment="Left" MinWidth="320"
-                                              Checked="TuneWifiCheckBox_Changed" Unchecked="TuneWifiCheckBox_Changed"
-                                              ToolTip="While any game in this list runs, stops Windows scanning for other Wi-Fi networks in the background — the usual cause of lag spikes that repeat about once a minute."/>
-                                    <CheckBox x:Name="AutoAddGamesCheckBox" Content="Add games as you play them" Style="{StaticResource GlowToggle}"
-                                              Margin="0,10,0,0" HorizontalAlignment="Left" MinWidth="320"
-                                              Checked="AutoAddGamesCheckBox_Changed" Unchecked="AutoAddGamesCheckBox_Changed"
-                                              ToolTip="When a game starts from a Steam, Epic, Xbox, GOG or Battle.net library and isn't in this list yet, it's added with nothing switched on."/>
-                                </StackPanel>
-                                <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center" Margin="16,0,0,0">
-                                    <Button x:Name="BrowseForGameButton" Content="Add game..." Style="{StaticResource SecondaryButton}"
-                                            Padding="14,8" Margin="0,0,8,0" Click="BrowseForGameButton_Click"/>
-                                    <Button Content="Scan for games" Style="{StaticResource PrimaryButton}"
-                                            Padding="16,8" Click="ScanForGamesButton_Click"/>
-                                </StackPanel>
-                            </Grid>
-                        </Border>
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="Auto"/>
+                            </Grid.ColumnDefinitions>
 
-                        <TextBlock x:Name="NoGameProfilesText" Text="No games yet. Scan to find your Steam and Epic games." FontSize="12"
-                                   Foreground="{DynamicResource TextSecondaryBrush}" Margin="4,0,0,14"/>
-                        <!-- One card per game, two per row when there's room (see GameProfilesListPanel_SizeChanged).
-                             The negative margin cancels the cards' own side gutters so their edges line up with the header. -->
-                        <UniformGrid x:Name="GameProfilesListPanel" Columns="2" Margin="-7,0" VerticalAlignment="Top"
-                                     SizeChanged="GameProfilesListPanel_SizeChanged"/>
+                            <StackPanel Grid.Column="0">
+                                <Border Style="{StaticResource Card}">
+                                    <Grid>
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="*"/>
+                                            <ColumnDefinition Width="Auto"/>
+                                        </Grid.ColumnDefinitions>
+                                        <StackPanel VerticalAlignment="Center">
+                                            <StackPanel Orientation="Horizontal">
+                                                <TextBlock Text="Games" Style="{StaticResource SectionHeader}" Margin="0,0,8,4"/>
+                                                <TextBlock x:Name="GameCountText" FontSize="11" Margin="0,1,0,4" VerticalAlignment="Center"
+                                                           Foreground="{DynamicResource TextSecondaryBrush}"/>
+                                            </StackPanel>
+                                            <TextBlock TextWrapping="Wrap" FontSize="11" Foreground="{DynamicResource TextSecondaryBrush}"
+                                                       Text="Mode, refresh rate and max fan switch on while a game runs and go back when it closes. The FPS cap is stored in the NVIDIA driver, the same as Control Panel's Max Frame Rate."/>
+                                            <TextBlock x:Name="GameScanStatusText" TextWrapping="Wrap" FontSize="11" Margin="0,6,0,0"
+                                                       Foreground="{DynamicResource TextSecondaryBrush}" Visibility="Collapsed"/>
+                                        </StackPanel>
+                                        <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center" Margin="16,0,0,0">
+                                            <Button x:Name="BrowseForGameButton" Content="Add game..." Style="{StaticResource SecondaryButton}"
+                                                    Padding="14,8" Margin="0,0,8,0" Click="BrowseForGameButton_Click"/>
+                                            <Button Content="Scan for games" Style="{StaticResource PrimaryButton}"
+                                                    Padding="16,8" Click="ScanForGamesButton_Click"/>
+                                        </StackPanel>
+                                    </Grid>
+                                </Border>
+
+                                <TextBlock x:Name="NoGameProfilesText" Text="No games yet. Scan to find your Steam and Epic games." FontSize="12"
+                                           Foreground="{DynamicResource TextSecondaryBrush}" Margin="4,0,0,14"/>
+                                <!-- One card per game, two per row when there's room (see GameProfilesListPanel_SizeChanged).
+                                     A wrap panel, not a grid: a folded card keeps its own short height beside an open one.
+                                     The negative margin cancels the cards' own side gutters so their edges line up with the header. -->
+                                <WrapPanel x:Name="GameProfilesListPanel" Margin="-7,0" VerticalAlignment="Top"
+                                           SizeChanged="GameProfilesListPanel_SizeChanged"/>
+                            </StackPanel>
+
+                            <!-- Options that apply to every game, always beside the list -->
+                            <Border x:Name="GameOptionsPanel" Grid.Column="1" Style="{StaticResource Card}" Width="300" Margin="14,0,0,14"
+                                    VerticalAlignment="Top">
+                                <StackPanel>
+                                    <TextBlock Text="Game options" Style="{StaticResource SectionHeader}" Margin="0,0,0,8"/>
+
+                                    <TextBlock Text="During play" Style="{StaticResource SettingsGroupLabel}" Margin="0,4,0,2"/>
+                                    <CheckBox x:Name="TuneWifiCheckBox" Content="Tune Wi-Fi while playing" Style="{StaticResource GlowToggle}"
+                                              Margin="0,8,0,0" Checked="TuneWifiCheckBox_Changed" Unchecked="TuneWifiCheckBox_Changed"
+                                              ToolTip="While any game in this list runs, stops Windows scanning for other Wi-Fi networks in the background — the usual cause of lag spikes that repeat about once a minute."/>
+                                    <CheckBox x:Name="ThrottleBackgroundCheckBox" Content="Background apps on Efficiency mode while playing" Style="{StaticResource GlowToggle}"
+                                              Margin="0,10,0,0" Checked="ThrottleBackgroundCheckBox_Changed" Unchecked="ThrottleBackgroundCheckBox_Changed"
+                                              ToolTip="While any game in this list runs, browsers, game launchers and chat apps (not Discord) get low priority and Windows' Efficiency mode, so they stay off the game's CPU cores. Put back when the game closes."/>
+                                    <CheckBox x:Name="ClearStandbyCheckBox" Content="Clear standby memory when a game starts" Style="{StaticResource GlowToggle}"
+                                              Margin="0,10,0,0" Checked="ClearStandbyCheckBox_Changed" Unchecked="ClearStandbyCheckBox_Changed"
+                                              ToolTip="Empties the file data Windows keeps cached in memory, the same as RAMMap's 'Empty Standby List'. Helps games that stutter when memory is nearly full; the first loads right after may be a little slower."/>
+
+                                    <TextBlock Text="After play" Style="{StaticResource SettingsGroupLabel}" Margin="0,16,0,2"/>
+                                    <CheckBox x:Name="CoolDownCheckBox" Content="Cool down for 2 minutes after a game closes" Style="{StaticResource GlowToggle}"
+                                              Margin="0,8,0,0" Checked="CoolDownCheckBox_Changed" Unchecked="CoolDownCheckBox_Changed"
+                                              ToolTip="Runs the fans at full speed for two minutes after a game in this list closes, so the laptop isn't left hot. Starting another game or switching max fan yourself ends it early."/>
+
+                                    <TextBlock Text="General" Style="{StaticResource SettingsGroupLabel}" Margin="0,16,0,2"/>
+                                    <CheckBox x:Name="AutoAddGamesCheckBox" Content="Add games as you play them" Style="{StaticResource GlowToggle}"
+                                              Margin="0,8,0,0" Checked="AutoAddGamesCheckBox_Changed" Unchecked="AutoAddGamesCheckBox_Changed"
+                                              ToolTip="When a game starts from a Steam, Epic, Xbox, GOG or Battle.net library and isn't in this list yet, it's added with nothing switched on."/>
+                                    <CheckBox x:Name="PluggedInTweaksCheckBox" Content="Smoother input and network on the charger" Style="{StaticResource GlowToggle}"
+                                              Margin="0,10,0,0" Checked="PluggedInTweaksCheckBox_Changed" Unchecked="PluggedInTweaksCheckBox_Changed"
+                                              ToolTip="While plugged in: USB power saving off (fixes a mouse that stutters or briefly freezes) and Wi-Fi at full power (no power-saving ping spikes). On battery nothing changes."/>
+                                    <CheckBox x:Name="GameBarRecordingCheckBox" Content="Xbox Game Bar background recording" Style="{StaticResource GlowToggle}"
+                                              Margin="0,10,0,0" Checked="GameBarRecordingCheckBox_Changed" Unchecked="GameBarRecordingCheckBox_Changed"
+                                              ToolTip="Game Bar can keep recording the last minutes of gameplay in the background, which costs some FPS. Off stops that and turns off Game Bar clips; Game Bar itself still opens with Win+G."/>
+                                    <TextBlock Text="Hover over an option to see what it does." FontSize="10.5" TextWrapping="Wrap" Margin="0,14,0,0"
+                                               Foreground="{DynamicResource TextSecondaryBrush}"/>
+                                </StackPanel>
+                            </Border>
+                        </Grid>
                     </StackPanel>
 
                 </StackPanel>
@@ -1004,6 +1079,9 @@
                                            Text="Looks up real updates for this exact laptop from HP, NVIDIA and Intel — nothing is installed automatically."/>
                                 <TextBlock x:Name="LastCheckedText" TextWrapping="Wrap" FontSize="11" Margin="0,2,0,0"
                                            Foreground="{DynamicResource TextSecondaryBrush}" Visibility="Collapsed"/>
+                                <CheckBox x:Name="RestorePointCheckBox" Content="Create a restore point before installing" Style="{StaticResource ModernCheckBox}"
+                                          Margin="0,10,0,0" FontSize="12" Checked="RestorePointCheckBox_Changed" Unchecked="RestorePointCheckBox_Changed"
+                                          ToolTip="Makes a Windows restore point first, so a driver or BIOS update that causes problems can be undone from System Restore. Windows makes at most one a day."/>
                             </StackPanel>
                             <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center" Margin="16,0,0,0">
                                 <Button Content="Open downloads folder" Style="{StaticResource SecondaryButton}"
@@ -1234,6 +1312,25 @@
                         </StackPanel>
                     </Border>
 
+                    <!-- HP's own fan software, which can undo this app's fan and mode changes -->
+                    <Border x:Name="OmenConflictCard" Style="{StaticResource Card}" Visibility="Collapsed">
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="Auto"/>
+                            </Grid.ColumnDefinitions>
+                            <StackPanel Margin="0,0,12,0">
+                                <TextBlock Text="HP fan software" Style="{StaticResource SectionHeader}" Margin="0,0,0,4"/>
+                                <TextBlock x:Name="OmenConflictText" FontSize="11" TextWrapping="Wrap"
+                                           Foreground="{DynamicResource TextSecondaryBrush}"/>
+                                <TextBlock x:Name="OmenConflictListText" FontSize="12" TextWrapping="Wrap" Margin="0,8,0,0"
+                                           Foreground="{DynamicResource TextPrimaryBrush}"/>
+                            </StackPanel>
+                            <Button x:Name="OmenConflictButton" Grid.Column="1" Style="{StaticResource SecondaryButton}" MinWidth="130"
+                                    Padding="14,8" VerticalAlignment="Center" Click="OmenConflictButton_Click"/>
+                        </Grid>
+                    </Border>
+
                     <!-- Maintenance -->
                     <Border Style="{StaticResource Card}">
                         <StackPanel>
@@ -1292,6 +1389,17 @@
                                        Margin="0,3,0,0" TextWrapping="Wrap" Foreground="{DynamicResource TextSecondaryBrush}"/>
                         </StackPanel>
                     </Border>
+
+                    <!-- Startup apps: what launches at sign-in, switched the way Task Manager does it -->
+                    <Border Style="{StaticResource Card}">
+                        <StackPanel>
+                            <TextBlock Text="Startup apps" Style="{StaticResource SectionHeader}" Margin="0,0,0,4"/>
+                            <TextBlock x:Name="StartupAppsStatusText" FontSize="11" TextWrapping="Wrap" Margin="0,0,0,10"
+                                       Foreground="{DynamicResource TextSecondaryBrush}"
+                                       Text="Programs that open when you sign in. Fewer means a faster start and less running in the background. Changes apply at the next sign-in."/>
+                            <StackPanel x:Name="StartupAppsListPanel"/>
+                        </StackPanel>
+                    </Border>
                 </StackPanel>
 
                 <!-- ===================== Settings tab ===================== -->
@@ -1315,6 +1423,7 @@
 
                             <TextBlock Text="Other" Style="{StaticResource SettingsGroupLabel}" Margin="10,14,10,4"/>
                             <RadioButton x:Name="ShortcutsNav" Content="Keyboard shortcuts" Tag="&#xE765;" Style="{StaticResource SettingsNavItem}" Checked="SettingsNav_Checked"/>
+                            <RadioButton x:Name="PrivacyNav" Content="Privacy" Tag="&#xE72E;" Style="{StaticResource SettingsNavItem}" Checked="SettingsNav_Checked"/>
                             <RadioButton x:Name="AboutNav" Content="About &amp; support" Tag="&#xE946;" Style="{StaticResource SettingsNavItem}" Checked="SettingsNav_Checked"/>
                         </StackPanel>
                     </Border>
@@ -1480,6 +1589,19 @@
                                         Margin="10,0" Style="{StaticResource ModernSlider}" ValueChanged="TempAlertSlider_ValueChanged"/>
                                 <TextBlock x:Name="TempAlertSliderText" Grid.Column="2" Text="85°C" Style="{StaticResource FieldValue}"/>
                             </Grid>
+                        </StackPanel>
+                    </Border>
+
+                    <!-- Privacy -->
+                    <Border x:Name="PrivacySection" Style="{StaticResource Card}" Visibility="Collapsed">
+                        <StackPanel>
+                            <TextBlock Text="Privacy" Style="{StaticResource SectionHeader}"/>
+                            <CheckBox x:Name="CameraCheckBox" Content="Camera" Style="{StaticResource GlowToggle}"
+                                      Checked="CameraCheckBox_Changed" Unchecked="CameraCheckBox_Changed"/>
+                            <TextBlock Text="Off switches the webcam off in Windows itself, the same as disabling it in Device Manager: no app or browser can use it until you turn it back on. Stays off after a restart."
+                                       FontSize="11" TextWrapping="Wrap" Margin="0,3,0,0" Foreground="{DynamicResource TextSecondaryBrush}"/>
+                            <TextBlock x:Name="CameraStatusText" FontSize="11" TextWrapping="Wrap" Margin="0,8,0,0"
+                                       Foreground="{DynamicResource TextSecondaryBrush}"/>
                         </StackPanel>
                     </Border>
 

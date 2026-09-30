@@ -34,6 +34,7 @@ public static class NvidiaFrameLimiter {
     private const uint IdDeleteProfileSetting = 0xE4A26362;
 
     private const int NvApiOk = 0;
+    private const int NvApiSettingNotFound = -160;
 
     /// <summary>What a unit of work did inside a driver session.</summary>
     private enum SessionResult { Failed, Ok, SaveNeeded }
@@ -97,14 +98,48 @@ public static class NvidiaFrameLimiter {
         return address == IntPtr.Zero ? null : Marshal.GetDelegateForFunctionPointer<T>(address);
     }
 
+    // "Power management mode" (0x1057EB71, name read back from the driver the same way);
+    // 1 = "Prefer maximum performance". Removing the setting returns the game to the global default.
+    private const uint PowerManagementModeSettingId = 0x1057EB71;
+    private const int PreferMaximumPerformance = 1;
+
     /// <summary>
     /// Current FPS cap for each executable, as the driver has it stored. Missing keys mean
     /// "no cap". Reads every game in one driver session, since opening one isn't free.
     /// </summary>
-    public static Dictionary<string, int> GetLimits(IEnumerable<string> executablePaths) {
-        var limits = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+    public static Dictionary<string, int> GetLimits(IEnumerable<string> executablePaths) =>
+        ReadSetting(FrameRateLimiterSettingId, executablePaths)
+            .Where(entry => entry.Value > 0)
+            .ToDictionary(entry => entry.Key, entry => entry.Value, StringComparer.OrdinalIgnoreCase);
+
+    /// <summary>
+    /// Caps <paramref name="executablePath"/> at <paramref name="fps"/> frames per second,
+    /// or removes the cap when <paramref name="fps"/> is 0. Returns false if the driver
+    /// rejected the change (including when it's simply not available).
+    /// </summary>
+    public static bool SetLimit(string executablePath, int fps) {
+        if (fps != 0 && (fps < MinFps || fps > MaxFps)) return false;
+        return WriteSetting(executablePath, FrameRateLimiterSettingId, fps == 0 ? null : fps);
+    }
+
+    /// <summary>The executables whose driver profile says "Prefer maximum performance".</summary>
+    public static HashSet<string> GetPreferMaximumPerformance(IEnumerable<string> executablePaths) =>
+        ReadSetting(PowerManagementModeSettingId, executablePaths)
+            .Where(entry => entry.Value == PreferMaximumPerformance)
+            .Select(entry => entry.Key)
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+    /// <summary>
+    /// Sets the game's power management mode to "Prefer maximum performance", which keeps the GPU
+    /// from dropping its clocks mid-game, or hands it back to the driver's global default.
+    /// </summary>
+    public static bool SetPreferMaximumPerformance(string executablePath, bool enabled) =>
+        WriteSetting(executablePath, PowerManagementModeSettingId, enabled ? PreferMaximumPerformance : null);
+
+    private static Dictionary<string, int> ReadSetting(uint settingId, IEnumerable<string> executablePaths) {
+        var values = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
         List<string> paths = executablePaths.Distinct(StringComparer.OrdinalIgnoreCase).ToList();
-        if (paths.Count == 0 || !Initialize()) return limits;
+        if (paths.Count == 0 || !Initialize()) return values;
 
         WithSession((session, buffers) => {
             GetSettingFn? getSetting = Lookup<GetSettingFn>(IdGetSetting);
@@ -116,25 +151,19 @@ public static class NvidiaFrameLimiter {
                 if (profile == IntPtr.Zero) continue;
 
                 PrepareSettingBuffer(buffers.Setting);
-                if (getSetting(session, profile, FrameRateLimiterSettingId, buffers.Setting) != NvApiOk) continue;
-
-                int fps = Marshal.ReadInt32(buffers.Setting, SettingCurrentValueOffset);
-                if (fps > 0) limits[path] = fps;
+                if (getSetting(session, profile, settingId, buffers.Setting) != NvApiOk) continue;
+                values[path] = Marshal.ReadInt32(buffers.Setting, SettingCurrentValueOffset);
             }
             return SessionResult.Ok; // nothing written, so nothing to save
         });
 
-        return limits;
+        return values;
     }
 
-    /// <summary>
-    /// Caps <paramref name="executablePath"/> at <paramref name="fps"/> frames per second,
-    /// or removes the cap when <paramref name="fps"/> is 0. Returns false if the driver
-    /// rejected the change (including when it's simply not available).
-    /// </summary>
-    public static bool SetLimit(string executablePath, int fps) {
+    // Writes one DWORD setting into the game's profile, creating the profile if needed; null removes
+    // the setting so the global default applies again.
+    private static bool WriteSetting(string executablePath, uint settingId, int? value) {
         if (string.IsNullOrWhiteSpace(executablePath) || !Initialize()) return false;
-        if (fps != 0 && (fps < MinFps || fps > MaxFps)) return false;
 
         return WithSession((session, buffers) => {
             FindApplicationByNameFn? find = Lookup<FindApplicationByNameFn>(IdFindApplicationByName);
@@ -144,12 +173,13 @@ public static class NvidiaFrameLimiter {
 
             IntPtr profile = FindProfile(find, session, buffers, executablePath);
 
-            if (fps == 0) {
+            if (value == null) {
                 // No profile at all means there's nothing to clear, which is already the goal.
                 if (profile == IntPtr.Zero) return SessionResult.Ok;
-                return deleteSetting(session, profile, FrameRateLimiterSettingId) == NvApiOk
-                    ? SessionResult.SaveNeeded
-                    : SessionResult.Failed;
+                int status = deleteSetting(session, profile, settingId);
+                // A profile that never had the setting is already at the default.
+                if (status == NvApiSettingNotFound) return SessionResult.Ok;
+                return status == NvApiOk ? SessionResult.SaveNeeded : SessionResult.Failed;
             }
 
             if (profile == IntPtr.Zero) {
@@ -158,9 +188,9 @@ public static class NvidiaFrameLimiter {
             }
 
             PrepareSettingBuffer(buffers.Setting);
-            Marshal.WriteInt32(buffers.Setting, SettingIdOffset, unchecked((int)FrameRateLimiterSettingId));
+            Marshal.WriteInt32(buffers.Setting, SettingIdOffset, unchecked((int)settingId));
             Marshal.WriteInt32(buffers.Setting, SettingTypeOffset, 0); // NVDRS_DWORD_TYPE
-            Marshal.WriteInt32(buffers.Setting, SettingCurrentValueOffset, fps);
+            Marshal.WriteInt32(buffers.Setting, SettingCurrentValueOffset, value.Value);
             return setSetting(session, profile, buffers.Setting) == NvApiOk
                 ? SessionResult.SaveNeeded
                 : SessionResult.Failed;
